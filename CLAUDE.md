@@ -56,7 +56,8 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
 
 ## UI features (main.gd)
 - Chapter screen (`chapter_menu.gd`, `Levels.CHAPTERS`) opens at startup; a level unlocks when the previous one has
-  a star (`_unlocked`), or with the teacher checkbox (`meta/unlock_all` in the save). Dev runs open everything
+  a star (`_unlocked`), or with the teacher checkbox (`meta/unlock_all` in the save). Running the code `#unlock`
+  (alone in the editor) sets the same flag, `#lock` clears it (`_test_command`). Dev runs open everything
   unless `--locks` is given.
 - "⏩ 빨리" (F7) runs without animation: commands go through `WorldHost._command` on `_world` (`_command_fast`).
 - Stars: -1 for lines > par, -1 for lines > par + 3, -1 for more robot commands than the reference solution needs on
