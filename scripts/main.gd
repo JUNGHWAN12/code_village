@@ -16,6 +16,7 @@ const VALUE_METHODS: PackedStringArray = [
 	"append", "get", "add", "pop", "remove", "split", "join", "replace", "count", "index", "insert",
 	"discard", "startswith", "endswith", "extend", "update", "setdefault", "find", "rfind", "zfill",
 	"center", "ljust", "rjust", "format", "union", "intersection", "difference", "symmetric_difference",
+	"appendleft", "extendleft", "most_common", "subtract", "rotate",
 	"issubset", "issuperset", "isdisjoint", "strip", "lstrip", "rstrip",
 ]
 const VILLAGER_SCALE: float = 1.6
@@ -188,6 +189,36 @@ const PALETTE_MORE: Dictionary = {
 		["sum()", "sum()", "모두 더해요", COLOR_VAR, true],
 		[".isdigit()", ".isdigit()", "숫자로만 된 글자인지", COLOR_VAR, true],
 	],
+	"math_more": [
+		["math.hypot(a, b)", "math.hypot(, )", "가로 a, 세로 b 만큼 떨어진 곳까지 곧은 거리", COLOR_VAR, true],
+		["math.gcd(a, b)", "math.gcd(, )", "a 와 b 를 모두 나누어떨어지게 하는 가장 큰 수", COLOR_VAR, true],
+		["round(x, 2)", "round(, 2)", "소수 둘째 자리까지 반올림", COLOR_VAR, true],
+	],
+	"random_more": [
+		["random.sample(목록, k)", "random.sample(, )", "목록에서 겹치지 않게 k개를 무작위로 뽑아요", COLOR_VAR, true],
+		["random.shuffle(목록)", "random.shuffle()", "목록의 순서를 무작위로 섞어요", COLOR_CMD, false],
+	],
+	"counter": [
+		["from collections import Counter", "from collections import Counter\n", "Counter 를 가져와요", COLOR_FLOW, false],
+		["Counter(목록)", "Counter()", "값마다 개수를 세어 딕셔너리처럼 돌려줘요", COLOR_VAR, true],
+		[".most_common(1)", ".most_common(1)", "가장 많은 것: [(값, 개수)]", COLOR_VAR, true],
+	],
+	"deque": [
+		["from collections import deque", "from collections import deque\n", "deque 를 가져와요", COLOR_FLOW, false],
+		["deque()", "deque()", "양쪽 끝에 넣고 뺄 수 있는 줄", COLOR_VAR, true],
+		[".appendleft()", ".appendleft()", "맨 앞에 넣어요", COLOR_CMD, true],
+		[".popleft()", ".popleft()", "맨 앞을 꺼내요", COLOR_VAR, true],
+	],
+	"statistics": [
+		["import statistics", "import statistics\n", "statistics 모듈을 가져와요", COLOR_FLOW, false],
+		["statistics.mean()", "statistics.mean()", "평균", COLOR_VAR, true],
+		["statistics.median()", "statistics.median()", "가운데 값(중앙값)", COLOR_VAR, true],
+	],
+	"itertools": [
+		["from itertools import permutations", "from itertools import permutations\n", "permutations 를 가져와요", COLOR_FLOW, false],
+		["permutations(목록)", "permutations()", "가능한 모든 순서 (튜플들)", COLOR_VAR, true],
+		["min(..., key=함수)", "min(, key=)", "함수 값이 가장 작은 것", COLOR_VAR, true],
+	],
 	"comprehension": [
 		["[x for x in 목록]", "[x for x in ]", "목록의 값마다 계산해서 새 목록을 만들어요", COLOR_VAR, true],
 		["... if 조건]", " if ", "조건에 맞는 값만 골라요: [n for n in 목록 if n > 0]", COLOR_FLOW, true],
@@ -215,6 +246,7 @@ const TOOL_ORDER: PackedStringArray = [
 	"list", "random", "robots", "class", "tuple_pos", "treasure", "items", "dict", "order", "market", "report",
 	"strings", "fstring", "set", "try", "comprehension", "mailboxes", "sort_key",
 	"input", "fstring_say", "int_input", "drop", "format_spec", "ord_chr", "map_filter",
+	"math_more", "random_more", "counter", "deque", "statistics", "itertools",
 ]
 
 var _level_index: int = 0
@@ -444,6 +476,19 @@ func _open_menu() -> void:
 	for i in Levels.ALL.size():
 		stars.append(_stars(i))
 	_menu.open(stars, _unlocked, _unlock_all(), _level_index)
+
+
+## Test commands: type one alone in the code editor and press ▶ 실행. "#unlock" opens every level,
+## "#lock" turns the locks back on (the same setting as the teacher checkbox, kept in the save).
+## The level's code comes back afterwards and the command itself is never saved.
+func _test_command(text: String) -> bool:
+	if text != "#unlock" and text != "#lock":
+		return false
+	var on := text == "#unlock"
+	_code.text = _codes.get(_level_index, _progress.get_value("code", str(_level_index), Levels.ALL[_level_index]["starter"]))
+	_on_unlock_all_toggled(on)
+	_log("모든 레벨을 열었어요. 다시 잠그려면 #lock 을 실행해요." if on else "레벨 잠금을 다시 켰어요.", "#9fd4ff")
+	return true
 
 
 func _on_unlock_all_toggled(on: bool) -> void:
@@ -686,6 +731,8 @@ func _on_reset_pressed() -> void:
 
 
 func _start_run(step_mode: bool, fast: bool = false) -> void:
+	if _test_command(_code.text.strip_edges()):
+		return
 	_result.hide()
 	_bubble.dismiss()
 	_robot_bubble.dismiss()
@@ -840,6 +887,8 @@ static func _failure_text(w: GridWorld, f: Dictionary) -> String:
 			return "보고한 값이 실제와 달라요. 실제 값: %s" % GridWorld._show(w.expected_report())
 		"rule":
 			return "종류마다 딱 하나씩만 주워야 해요. 주운 것: %s" % GridWorld._show(w.picked)
+		"route":
+			return "목표에 도착했지만 더 짧은 순서가 있어요. 걸은 칸: %d / 가장 짧으면: %d" % [int(f["steps"]), int(f["best"])]
 		"speech":
 			return "손님에게 아직 제대로 인사하지 않았어요. 들어야 할 말: \"%s\"" % w.expected_speech()
 	return ""
