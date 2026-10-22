@@ -33,7 +33,9 @@ extends RefCounted
 ##                                                      null when there is none left: EOFError)
 ## WorldHost is a ready-made synchronous host over a GridWorld.
 
-const COMMANDS: PackedStringArray = ["move", "turn_left", "turn_right", "pick", "face", "drop", "report", "say", "wait"]
+const COMMANDS: PackedStringArray = [
+	"move", "turn_left", "turn_right", "pick", "face", "drop", "report", "say", "wait", "deliver",
+]
 ## Commands that take a value; every other command takes none.
 const COMMAND_ARGS: Dictionary = {"face": 1, "drop": 1, "report": 1, "say": 1}
 ## The exception a failing command raises (try/except can catch it); others raise RobotError.
@@ -47,6 +49,7 @@ const CONDITIONS: PackedStringArray = ["is_blocked", "on_apple", "at_goal"]
 const SENSORS: PackedStringArray = [
 	"get_x", "get_y", "goal_x", "goal_y", "apples_left", "route", "segments",
 	"get_pos", "goal_pos", "item_here", "treasure_map", "order", "market", "read_sign", "customer", "mailboxes",
+	"house_here", "houses", "flags",
 ]
 const BUILTINS: PackedStringArray = [
 	"print", "range", "len", "abs", "min", "max", "int", "float", "str", "round", "robots", "super",
@@ -3279,6 +3282,8 @@ func _robot_call(name: String, index: int, args: Array) -> Variant:
 		return null
 	if name in COMMANDS:
 		var host_args: Array = args.map(func(a: Variant) -> Variant: return _to_host(a))
+		if name == "say":
+			host_args = [_str(args[0])]  # say(100.0) says "100.0", like print
 		var message: String = await _host.run_command(name, _line, index, host_args)
 		if _host.is_stop_requested():
 			_stop()
