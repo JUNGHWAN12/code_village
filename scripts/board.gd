@@ -16,18 +16,17 @@ const ITEMS: Dictionary = {
 }
 const GOAL_BASKET: String = "EA03_Prop_Vegetable_Basket_02"
 
-## [asset name, footprint in meters] used on blocked cells.
-const BLOCKERS: Array = [
-	["EA03_Nature_Bush_03a", 1.9],
-	["EA03_Nature_Bush_03c", 1.6],
-	["EA03_Nature_Bush_04a", 1.9],
-	["EA03_Nature_Bush_03b", 1.8],
-	["EA03_Prop_Container_Barrel_01d", 0.9],
-	["EA03_Prop_Container_Crate_02a", 1.2],
-	["EA03_Environment_Rock_Head_01c", 1.7],
-	["EA03_Environment_Rock_Head_01b", 1.4],
-	["EA03_Prop_Tool_Stump_02a", 1.0],
-]
+## Blocked cells are one raised lawn (TURF_HEIGHT above the ground) so the sunken road reads at a glance.
+## Only round bushes of one family stand on it, centred, on about BUSH_SHARE of the inner cells.
+const TURF_HEIGHT: float = 0.32
+const TURF_COLOR: Color = Color(0.48, 0.62, 0.29)
+const BUSH: String = "EA03_Nature_Bush_03c"  # a round clump; the other bush models are twiggy or tree-like
+const BUSH_SIZE: float = 1.55
+const BUSH_SHARE: int = 30  # percent of blocked inner cells with a bush
+## Flat clover-like patches that give the lawn a little texture without standing up.
+const GROUND_COVER: PackedStringArray = ["EA03_Nature_Bush_Flat_03d", "EA03_Nature_Bush_Flat_03e"]
+const COVER_SHARE: int = 22
+const FENCE: String = "EA03_Fence_VegetablePatch_02a"
 const TREES: PackedStringArray = [
 	"EA03_Nature_Tree_01b", "EA03_Nature_Tree_02b", "EA03_Nature_Tree_02c",
 	"EA03_Nature_Tree_03b", "EA03_Nature_Tree_03c", "EA03_Nature_Tree_06b",
@@ -35,6 +34,8 @@ const TREES: PackedStringArray = [
 const DOOR: String = "EA03_Fence_WallGate_01a"
 const SIGN: String = "res://asset/props/EA03_Prop_Sign_RoadDirect_01a.fbx"
 const HORSE: String = "res://asset/props/EA_Animal_Horse_01a.fbx"
+const HOUSE_DOOR: String = "EA03_Prop_House_Door_01b"
+const PARCEL: String = "EA03_Prop_Container_Bag_02a"
 const PROP_PALETTE: String = "res://asset/glb/glb/EA03_Items_House_Apple_01a_EA03_FREE_Slavica.png"
 const GRASS_SHADER: Shader = preload("res://shaders/EA_GrassWind.gdshader")
 const TUFTS: PackedStringArray = ["EA03_Plant_Grass_01c", "EA03_Plant_Grass_01d", "EA03_Plant_Grass_01e"]
@@ -53,6 +54,8 @@ var _scene_cache: Dictionary = {}
 var _wind_materials: Dictionary = {}  # palette texture + model height -> grass ShaderMaterial
 static var _palette_materials: Dictionary = {}  # Texture2D -> StandardMaterial3D
 var _dirt_material: StandardMaterial3D = _flat_material(Color(0.5, 0.39, 0.26))
+var _turf_material: StandardMaterial3D = _flat_material(TURF_COLOR)
+var _size: Vector2i = Vector2i.ZERO
 var _rng := RandomNumberGenerator.new()
 var _time: float = 0.0
 
@@ -67,6 +70,7 @@ func build(world: GridWorld) -> void:
 	_doors.clear()
 	_horses.clear()
 	_rng.seed = world.width * 7919 + world.height * 104729
+	_size = Vector2i(world.width, world.height)
 	_origin = Vector3(-(world.width - 1) * CELL * 0.5, 0.0, -(world.height - 1) * CELL * 0.5)
 
 	_add_ground(world)
@@ -81,6 +85,8 @@ func build(world: GridWorld) -> void:
 				_add_blocker(p)
 	for p in world.apples:
 		_add_apple(p, world.apples[p])
+	for p in world.houses_at:
+		_add_house(world, p, str(world.houses_at[p]))
 	for g in world.goals:
 		_add_goal(g)
 	_add_doors(world)
@@ -134,14 +140,26 @@ func open_door(p: Vector2i) -> void:
 
 
 func _add_sign(p: Vector2i) -> void:
-	_add_blocker_ground(p)
-	_spawn(SIGN, cell_to_world(p), 1.4, PI * 0.25)
+	_add_turf(p)
+	_spawn(SIGN, cell_to_world(p) + Vector3(0, TURF_HEIGHT, 0), 1.4, PI * 0.25)
 
 
-func _add_blocker_ground(p: Vector2i) -> void:
-	if _rng.randf() < 0.6:
-		var tuft := TUFTS[_rng.randi() % TUFTS.size()]
-		_spawn_grass(tuft, cell_to_world(p) + Vector3(_rng.randf_range(-0.6, 0.6), 0, _rng.randf_range(-0.6, 0.6)), 0.7, _rng.randf() * TAU)
+## One cell of the raised lawn.
+func _add_turf(p: Vector2i) -> void:
+	var turf := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(CELL, TURF_HEIGHT, CELL)
+	turf.mesh = box
+	turf.material_override = _turf_material
+	turf.position = cell_to_world(p) + Vector3(0, TURF_HEIGHT * 0.5, 0)
+	turf.name = "Turf_%d_%d" % [p.x, p.y]
+	add_child(turf)
+
+
+## A fixed pseudo-random number 0..99 for a cell, so the same map always looks the same.
+static func _cell_roll(p: Vector2i, salt: int = 0) -> int:
+	var h := (p.x * 73856093) ^ (p.y * 19349663) ^ (salt * 83492791)
+	return posmod(h, 100)
 
 
 func _add_horses(world: GridWorld) -> void:
@@ -224,7 +242,7 @@ func _add_path_tile(p: Vector2i) -> void:
 	var holder := Node3D.new()
 	holder.name = "Tile_%d_%d" % [p.x, p.y]
 	holder.position = cell_to_world(p)
-	holder.rotation.y = _rng.randi_range(0, 3) * PI * 0.5
+	holder.rotation.y = 0.0  # every stone tile laid the same way, so the road reads as one road
 	add_child(holder)
 	# Warm dirt under the stones so the path reads clearly against the grass.
 	var dirt := MeshInstance3D.new()
@@ -245,14 +263,15 @@ func _add_path_tile(p: Vector2i) -> void:
 	floor_y = bottom + box.size.y * flatten * 0.85
 
 
+## A blocked cell: lawn, and on some inner cells a bush. The outer ring stays plain so the fence frames it.
 func _add_blocker(p: Vector2i) -> void:
-	var pick: Array = BLOCKERS[_rng.randi() % BLOCKERS.size()]
-	var jitter := Vector3(_rng.randf_range(-0.2, 0.2), 0.0, _rng.randf_range(-0.2, 0.2))
-	_spawn(pick[0], cell_to_world(p) + jitter, pick[1] * _rng.randf_range(0.9, 1.1), _rng.randf() * TAU)
-	if _rng.randf() < 0.5:
-		var tuft := TUFTS[_rng.randi() % TUFTS.size()]
-		var off := Vector3(_rng.randf_range(-0.7, 0.7), 0.0, _rng.randf_range(-0.7, 0.7))
-		_spawn_grass(tuft, cell_to_world(p) + off, 0.7, _rng.randf() * TAU)
+	_add_turf(p)
+	var edge := p.x == 0 or p.y == 0 or p.x == _size.x - 1 or p.y == _size.y - 1
+	var top := cell_to_world(p) + Vector3(0, TURF_HEIGHT, 0)
+	if not edge and _cell_roll(p) < BUSH_SHARE:
+		_spawn(BUSH, top, BUSH_SIZE, _cell_roll(p, 2) % 4 * PI * 0.5)
+	elif _cell_roll(p, 3) < COVER_SHARE:
+		_spawn(GROUND_COVER[_cell_roll(p, 1) % GROUND_COVER.size()], top, 1.3, _cell_roll(p, 2) % 4 * PI * 0.5)
 
 
 func _add_apple(p: Vector2i, kind: String = "apple") -> void:
@@ -278,6 +297,33 @@ func _add_apple(p: Vector2i, kind: String = "apple") -> void:
 
 
 ## A delivered item pops up over cell p and fades away.
+## A house front for cell p: a door at the back edge of the cell and a floating name plate.
+func _add_house(world: GridWorld, p: Vector2i, plate: String) -> void:
+	var back := Vector2i(0, -1) if world.cell(p + Vector2i(0, -1)) == "#" else Vector2i(0, 1)
+	var at := cell_to_world(p) + Vector3(back.x, 0, back.y) * CELL * 0.45
+	_spawn(HOUSE_DOOR, at, CELL * 0.55, PI * 0.5 if back.y < 0 else -PI * 0.5)
+	var label := Label3D.new()
+	label.text = plate
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.pixel_size = 0.006
+	label.font_size = 72
+	label.outline_size = 18
+	label.modulate = Color(1.0, 0.93, 0.7)
+	label.outline_modulate = Color(0.12, 0.08, 0.04, 0.95)
+	label.position = surface(p) + Vector3(0, 2.4, 0)
+	add_child(label)
+
+
+## A parcel hops from the robot into the house at p.
+func show_parcel(p: Vector2i) -> void:
+	var item := _spawn(PARCEL, surface(p) + Vector3(0, 0.6, 0), 0.7, 0.0)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(item, "position", item.position + Vector3(0, 1.0, -CELL * 0.4), 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(item, "scale", Vector3.ONE * 0.01, 0.35).set_delay(0.45)
+	tw.chain().tween_callback(item.queue_free)
+
+
 func show_drop(p: Vector2i, kind: String) -> void:
 	var spec: Array = ITEMS.get(kind, ITEMS["apple"])
 	var item := _spawn(spec[0], surface(p) + Vector3(0, 0.6, 0), spec[1], 0.0)
@@ -330,43 +376,48 @@ func _add_surroundings(world: GridWorld) -> void:
 	var half_w := world.width * CELL * 0.5
 	var half_h := world.height * CELL * 0.5
 
-	# Tree line behind and beside the board (kept away from the camera side).
-	for i in 14:
-		var x := _rng.randf_range(-half_w - 14.0, half_w + 14.0)
-		var z := -half_h - _rng.randf_range(3.0, 9.0)
-		_spawn(TREES[_rng.randi() % TREES.size()], Vector3(x, 0, z), _rng.randf_range(3.0, 4.2), _rng.randf() * TAU)
+	# A low fence all around the board frames the puzzle.
+	var gap := 0.9
+	_fence_line(Vector3(-half_w - gap, 0, half_h + gap), Vector3(half_w + gap, 0, half_h + gap))
+	_fence_line(Vector3(-half_w - gap, 0, -half_h - gap), Vector3(half_w + gap, 0, -half_h - gap))
+	_fence_line(Vector3(-half_w - gap, 0, -half_h - gap), Vector3(-half_w - gap, 0, half_h + gap))
+	_fence_line(Vector3(half_w + gap, 0, -half_h - gap), Vector3(half_w + gap, 0, half_h + gap))
+
+	# Trees in two groups behind the back corners and a few along the sides, well clear of the board.
 	for side in [-1.0, 1.0]:
-		for i in 4:
-			var x: float = side * (half_w + _rng.randf_range(3.5, 9.0))
-			var z := _rng.randf_range(-half_h, half_h * 0.4)
-			_spawn(TREES[_rng.randi() % TREES.size()], Vector3(x, 0, z), _rng.randf_range(3.0, 4.0), _rng.randf() * TAU)
+		for i in 5:
+			var x: float = side * (half_w + 5.0 + i * 2.6 + _rng.randf_range(-0.6, 0.6))
+			var z := -half_h - 3.5 - (i % 3) * 2.2 + _rng.randf_range(-0.5, 0.5)
+			_spawn(TREES[i % TREES.size()], Vector3(x, 0, z), _rng.randf_range(3.4, 4.0), _rng.randf() * TAU)
+		for i in 2:
+			var x: float = side * (half_w + 6.5 + i * 3.0)
+			var z := half_h * 0.3 - i * 4.0
+			_spawn(TREES[(i + 3) % TREES.size()], Vector3(x, 0, z), 3.4, _rng.randf() * TAU)
 
 	# Village buildings in the background, at native scale.
 	_spawn("EA03_Village_OutBuilding_Cubby_01d", Vector3(-half_w - 9.0, 0, -half_h - 14.0), 0.0, 0.4)
 	_spawn("EA03_Village_OutBuilding_PentHouse_01a", Vector3(half_w + 8.0, 0, -half_h - 15.0), 0.0, -0.5)
 	_spawn("EA03_Village_Tover_01a", Vector3(-2.0, 0, -half_h - 24.0), 0.0, 0.2)
 	_spawn("EA03_Village_OutBuilding_Shed_01a", Vector3(half_w + 15.0, 0, -half_h + 2.0), 0.0, -1.4)
-	_spawn("EA03_Village_AnimalBreeding_Hovel_01a", Vector3(-half_w - 6.0, 0, half_h - 1.0), 0.0, 1.2)
+	_spawn("EA03_Village_AnimalBreeding_Hovel_01a", Vector3(-half_w - 10.0, 0, half_h - 1.0), 0.0, 1.2)
 
-	# Small props near the board edges.
-	_spawn("EA03_Items_House_Firewood_01a", Vector3(-half_w - 3.0, 0, -half_h + 1.0), 0.0, 1.57)
-	_spawn("EA03_Prop_Town_Bench_01a", Vector3(half_w + 2.2, 0, half_h - 2.0), 0.0, 0.0)
-	_spawn("EA03_Prop_Container_Barrel_01d", Vector3(half_w + 2.4, 0, -half_h + 0.5), 0.0, 0.3)
-	_spawn("EA03_Prop_Container_Bale_01a", Vector3(half_w + 2.0, 0, -half_h + 1.6), 0.9, 0.8)
-
-	# Low vegetable-patch fence along the front edge, so it frames without hiding the board.
-	var fence_len := 2.6
-	var count := int(ceil((world.width * CELL + 2.0) / fence_len))
-	var start_x := -count * fence_len * 0.5 + fence_len * 0.5
-	for i in count:
-		_spawn("EA03_Fence_VegetablePatch_02a", Vector3(start_x + i * fence_len, 0, half_h + 1.1), 0.0, 0.0)
-
-	# Grass tufts scattered outside the board.
-	for i in 70:
+	# Sparse grass outside the fence only.
+	for i in 36:
 		var pos := Vector3(_rng.randf_range(-half_w - 12.0, half_w + 12.0), 0, _rng.randf_range(-half_h - 8.0, half_h + 6.0))
-		if absf(pos.x) < half_w + 0.6 and absf(pos.z) < half_h + 0.6:
+		if absf(pos.x) < half_w + 2.5 and absf(pos.z) < half_h + 2.5:
 			continue
-		_spawn_grass(TUFTS[_rng.randi() % TUFTS.size()], pos, _rng.randf_range(0.6, 1.4), _rng.randf() * TAU)
+		_spawn_grass(TUFTS[_rng.randi() % TUFTS.size()], pos, _rng.randf_range(0.6, 1.2), _rng.randf() * TAU)
+
+
+## Fence pieces from a to b (a straight line along x or z).
+func _fence_line(a: Vector3, b: Vector3) -> void:
+	var piece := 2.6
+	var length := a.distance_to(b)
+	var count := maxi(1, int(ceil(length / piece)))
+	var step := (b - a) / count
+	var yaw := 0.0 if absf(b.x - a.x) > absf(b.z - a.z) else PI * 0.5
+	for i in count:
+		_spawn(FENCE, a + step * (i + 0.5), step.length() * 0.98, yaw)
 
 
 # --- Helpers --------------------------------------------------------------

@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## Map letters: S = robot 0, R = more robots (in reading order), G = goal (one per robot),
 ## items A = apple, C = carrot, K = corn, # = blocked, D = door (opens with the password),
-## I = signpost (blocked), H = horse (walks back and forth, one step after every robot command). Every robot method takes the robot index
+## I = signpost (blocked), M = house with a name plate (walkable; labels from "houses"), H = horse (walks back and forth, one step after every robot command). Every robot method takes the robot index
 ## (default 0), so the plain move() / at_goal() calls of earlier levels act on robot 0.
 ##
 ## Optional level keys used by the dictionary chapter:
@@ -20,9 +20,19 @@ extends RefCounted
 ##   "horse_dir": "S"      direction the horses start walking in
 ##   "rule": "nearest_first"  pick() only works on an item nearest to the start (Manhattan distance)
 ##   "mailboxes" / "answer"   mailboxes() list, and the value report() must equal (report: "answer")
+##   "houses": ["민지", ...]   name plates of the M cells in reading order (house_here(), houses())
+##   "deliver": "set" | "order" | "sample"   what deliver() must have reached by the end: exactly the
+##                           houses in "answer" (any order / that order), or int(inputs[0]) different houses
+##   "password": ["130", "135"]  a list gives each door (in reading order) its own password
+##   "rule": "nearest_flag"  several G flags; the robot must end on the one nearest by straight line
 ##   "inputs": ["철수", "3"]  what input() returns, one answer per call (the villager's replies);
 ##                           a "speech" template can use them as {in0}, {in1}, ...
 ##   "report": "receipt"     report() must get "합계 1,234원" (the picked items' total price)
+##   "report": "distance"    straight-line distance start -> goal, rounded to 2 places
+##   "report": "gcd"         math.gcd of the picked apples and carrots
+##   "report": "most"        the kind picked most often, e.g. "carrot"
+##   "report": "sample"      a list of int(inputs[0]) different names from mailboxes()
+##   "rule": "shortest"      the robot must walk no more steps than the shortest order through all items
 
 ## Facing order is clockwise: N, E, S, W. Vector2i is (column, row).
 const DIRS: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
@@ -48,7 +58,7 @@ var doors: Dictionary = {}  # Vector2i -> true while the door is closed
 var horses: Array[Vector2i] = []
 var horse_dirs: Array[int] = []
 var sign_text: String = ""
-var password: String = ""
+var password: Variant = ""  # a String, or one per door (reading order)
 var customer_name: String = ""
 var speech: String = ""
 var rule: String = ""
@@ -58,6 +68,11 @@ var answer: Variant = null
 var last_pick_error: String = ""  # why the last pick() failed under a rule ("" = nothing to pick)
 var inputs: Array = []  # answers input() hands out, in order
 var _input_at: int = 0
+var steps_walked: int = 0  # successful move()s since the last reset (for rule "shortest")
+var houses_at: Dictionary = {}  # Vector2i -> name plate of the house (map letter M)
+var deliver_mode: String = ""
+var deliveries: Array = []  # name plates of the houses deliver() reached, in order
+var _door_order: Array = []  # door cells in reading order (for one password per door)
 
 ## Robot 0, for single-robot code.
 var robot: Vector2i:
@@ -92,6 +107,7 @@ func load_level(level: Dictionary) -> void:
 	goals.clear()
 	var first := Vector2i(-1, -1)
 	var others: Array[Vector2i] = []
+	var house_cells: Array[Vector2i] = []
 	for y in height:
 		for x in _rows[y].length():
 			var p := Vector2i(x, y)
@@ -106,6 +122,8 @@ func load_level(level: Dictionary) -> void:
 					_start_doors[p] = true
 				"H":
 					_start_horses.append(p)
+				"M":
+					house_cells.append(p)
 				var c:
 					if ITEM_LETTERS.has(c):
 						_start_apples[p] = ITEM_LETTERS[c]
@@ -123,6 +141,13 @@ func load_level(level: Dictionary) -> void:
 	mailbox_list = level.get("mailboxes", [])
 	answer = level.get("answer")
 	inputs = level.get("inputs", []).duplicate()
+	houses_at.clear()
+	var plates: Array = level.get("houses", [])
+	for k in house_cells.size():
+		houses_at[house_cells[k]] = plates[k] if k < plates.size() else str(k + 1)
+	deliver_mode = level.get("deliver", "")
+	_door_order = _start_doors.keys()
+	_door_order.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
 	_horse_dir0 = maxi(0, DIR_LETTERS.find(String(level.get("horse_dir", "S"))))
 	reset()
 
@@ -144,6 +169,8 @@ func reset() -> void:
 		horse_dirs.append(_horse_dir0)
 	said_ok = false
 	_input_at = 0
+	steps_walked = 0
+	deliveries.clear()
 
 
 ## Item kinds on this map, e.g. ["apple", "corn"].
@@ -217,6 +244,7 @@ func move(i: int = 0) -> bool:
 	if is_blocked(i):
 		return false
 	robots[i] = front(i)
+	steps_walked += 1
 	return true
 
 
@@ -273,9 +301,26 @@ func drop(i: int, kind: Variant) -> String:
 ## Checks a reported value against what was really picked. Returns an error message or "".
 func report(value: Variant) -> String:
 	reported = value
-	var want = expected_report()
-	if want == null:
+	if report_kind == "":
 		return "이 레벨에서는 보고할 것이 없어요."
+	return _report_problem(value)
+
+
+## Why `value` is the wrong report, or "" when it is right.
+func _report_problem(value: Variant) -> String:
+	if report_kind == "sample":
+		var k := int(str(inputs[0])) if not inputs.is_empty() else 0
+		var ok: bool = value is Array and value.size() == k
+		if ok:
+			var seen := {}
+			for v in value:
+				if seen.has(v) or not v in mailbox_list:
+					ok = false
+				seen[v] = true
+		if not ok:
+			return "보고가 틀렸어요. mailboxes() 에서 서로 다른 %d명을 뽑아야 해요. 보고한 값: %s" % [k, _show(value)]
+		return ""
+	var want = expected_report()
 	if not _same_value(value, want):
 		return "보고가 틀렸어요. 보고한 값: %s / 실제 값: %s" % [_show(value), _show(want)]
 	return ""
@@ -286,7 +331,8 @@ func report(value: Variant) -> String:
 func say(i: int, text: Variant) -> String:
 	var words := str(text)
 	if door_ahead(i):
-		if password != "" and words == password:
+		var want := door_password(front(i))
+		if want != "" and words == want:
 			doors.erase(front(i))
 			return ""
 		return "문이 열리지 않아요. 암호가 틀렸어요. (말한 것: \"%s\")" % words
@@ -297,6 +343,56 @@ func say(i: int, text: Variant) -> String:
 			return ""
 		return "손님이 고개를 갸웃해요. 말한 것: \"%s\" / 들어야 할 말: \"%s\"" % [words, want]
 	return ""
+
+
+## The password of the door at p ("" if the level has none).
+func door_password(p: Vector2i) -> String:
+	if password is Array:
+		var k := _door_order.find(p)
+		return str(password[k]) if k >= 0 and k < password.size() else ""
+	return str(password)
+
+
+## Delivers a parcel to the house the robot stands on. Returns an error message, or "".
+func deliver(i: int = 0) -> String:
+	var here = houses_at.get(robots[i])
+	if here == null:
+		return "여기는 집 앞이 아니에요. 이름표가 있는 집 칸에 서서 deliver() 해요."
+	if here in deliveries:
+		return "%s 집에는 이미 배달했어요." % _show(here)
+	deliveries.append(here)
+	return ""
+
+
+## Why the deliveries are not right yet, or "" when they are.
+func delivery_problem() -> String:
+	match deliver_mode:
+		"set", "order":
+			var want: Array = answer if answer is Array else []
+			var ok := deliveries.size() == want.size()
+			for k in deliveries.size():
+				if not ok:
+					break
+				ok = (deliveries[k] == want[k]) if deliver_mode == "order" else (deliveries[k] in want)
+			if not ok:
+				return "배달한 집: %s / 배달해야 할 집: %s%s" % [_show(deliveries), _show(want), " (이 순서로)" if deliver_mode == "order" else ""]
+		"sample":
+			var k := int(str(inputs[0])) if not inputs.is_empty() else 0
+			if deliveries.size() != k:
+				return "서로 다른 집 %d곳에 배달해야 해요. 배달한 집: %s" % [k, _show(deliveries)]
+	return ""
+
+
+## The flag (goal) nearest to the start by straight line, for rule "nearest_flag".
+func target_flag() -> Vector2i:
+	var best := goal
+	var best_d := INF
+	for g in goals:
+		var d := Vector2(g - _starts[0]).length()
+		if d < best_d - 1e-9:
+			best_d = d
+			best = g
+	return best
 
 
 func expected_speech() -> String:
@@ -322,6 +418,25 @@ func expected_report() -> Variant:
 			return answer
 		"count":
 			return picked.duplicate()
+		"distance":
+			var d := Vector2(goals[0] - _starts[0])
+			return roundf(sqrt(d.x * d.x + d.y * d.y) * 100.0) / 100.0
+		"gcd":
+			var a := int(picked.get("apple", 0))
+			var b := int(picked.get("carrot", 0))
+			while b != 0:
+				var t := a % b
+				a = b
+				b = t
+			return a
+		"most":
+			var best := ""
+			for k in picked:
+				if best == "" or int(picked[k]) > int(picked[best]):
+					best = k
+			return best
+		"sample":
+			return "mailboxes() 에서 서로 다른 %s명" % (str(inputs[0]) if not inputs.is_empty() else "?")
 		"price", "receipt":
 			var total := 0
 			for k in picked:
@@ -449,6 +564,25 @@ func next_input() -> Variant:
 	return str(inputs[_input_at - 1])
 
 
+func house_here(i: int = 0) -> Variant:
+	return houses_at.get(robots[i])
+
+
+## Name plate -> house position, e.g. {"민지": Vector2i(3, 1)}.
+func houses(_i: int = 0) -> Dictionary:
+	var out := {}
+	for p in houses_at:
+		out[houses_at[p]] = p
+	return out
+
+
+## Positions of the flags (goals), in reading order.
+func flags(_i: int = 0) -> Array:
+	var out: Array = goals.duplicate()
+	out.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	return out
+
+
 func mailboxes(_i: int = 0) -> Array:
 	return mailbox_list.duplicate()
 
@@ -525,7 +659,10 @@ func is_solved() -> bool:
 ## Why the level is not solved yet, most important first:
 ## {"kind": "goal"} / {"kind": "apples", "left": n} / {"kind": "order"} / {"kind": "report"}; {} when solved.
 func failure() -> Dictionary:
-	if not all_goals_reached():
+	if rule == "nearest_flag":
+		if robots[0] != target_flag():
+			return {"kind": "flag"}
+	elif not all_goals_reached():
 		return {"kind": "goal"}
 	if rule == "one_each":
 		var want := {}
@@ -537,11 +674,34 @@ func failure() -> Dictionary:
 		return {"kind": "apples", "left": apple_total - collected}
 	if not wanted.is_empty() and not _same_value(_without_zeros(delivered), _without_zeros(wanted)):
 		return {"kind": "order"}
-	if report_kind != "" and (reported == null or not _same_value(reported, expected_report())):
+	if rule == "shortest" and steps_walked > shortest_walk():
+		return {"kind": "route", "steps": steps_walked, "best": shortest_walk()}
+	if report_kind != "" and (reported == null or _report_problem(reported) != ""):
 		return {"kind": "report"}
+	if deliver_mode != "" and delivery_problem() != "":
+		return {"kind": "delivery", "text": delivery_problem()}
 	if speech != "" and not said_ok:
 		return {"kind": "speech"}
 	return {}
+
+
+## Fewest steps from the start through every item (in the best order) to the goal, on an open field.
+func shortest_walk() -> int:
+	var items: Array = _start_apples.keys()
+	var goal_cell: Vector2i = goals[0] if not goals.is_empty() else _starts[0]
+	return _best_walk(_starts[0], items, goal_cell)
+
+
+static func _best_walk(from: Vector2i, left: Array, goal_cell: Vector2i) -> int:
+	if left.is_empty():
+		return absi(goal_cell.x - from.x) + absi(goal_cell.y - from.y)
+	var best := 1 << 30
+	for k in left.size():
+		var p: Vector2i = left[k]
+		var rest := left.duplicate()
+		rest.remove_at(k)
+		best = mini(best, absi(p.x - from.x) + absi(p.y - from.y) + _best_walk(p, rest, goal_cell))
+	return best
 
 
 static func _without_zeros(d: Dictionary) -> Dictionary:
