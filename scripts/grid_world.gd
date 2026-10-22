@@ -23,6 +23,11 @@ extends RefCounted
 ##   "inputs": ["철수", "3"]  what input() returns, one answer per call (the villager's replies);
 ##                           a "speech" template can use them as {in0}, {in1}, ...
 ##   "report": "receipt"     report() must get "합계 1,234원" (the picked items' total price)
+##   "report": "distance"    straight-line distance start -> goal, rounded to 2 places
+##   "report": "gcd"         math.gcd of the picked apples and carrots
+##   "report": "most"        the kind picked most often, e.g. "carrot"
+##   "report": "sample"      a list of int(inputs[0]) different names from mailboxes()
+##   "rule": "shortest"      the robot must walk no more steps than the shortest order through all items
 
 ## Facing order is clockwise: N, E, S, W. Vector2i is (column, row).
 const DIRS: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
@@ -58,6 +63,7 @@ var answer: Variant = null
 var last_pick_error: String = ""  # why the last pick() failed under a rule ("" = nothing to pick)
 var inputs: Array = []  # answers input() hands out, in order
 var _input_at: int = 0
+var steps_walked: int = 0  # successful move()s since the last reset (for rule "shortest")
 
 ## Robot 0, for single-robot code.
 var robot: Vector2i:
@@ -144,6 +150,7 @@ func reset() -> void:
 		horse_dirs.append(_horse_dir0)
 	said_ok = false
 	_input_at = 0
+	steps_walked = 0
 
 
 ## Item kinds on this map, e.g. ["apple", "corn"].
@@ -217,6 +224,7 @@ func move(i: int = 0) -> bool:
 	if is_blocked(i):
 		return false
 	robots[i] = front(i)
+	steps_walked += 1
 	return true
 
 
@@ -273,9 +281,26 @@ func drop(i: int, kind: Variant) -> String:
 ## Checks a reported value against what was really picked. Returns an error message or "".
 func report(value: Variant) -> String:
 	reported = value
-	var want = expected_report()
-	if want == null:
+	if report_kind == "":
 		return "이 레벨에서는 보고할 것이 없어요."
+	return _report_problem(value)
+
+
+## Why `value` is the wrong report, or "" when it is right.
+func _report_problem(value: Variant) -> String:
+	if report_kind == "sample":
+		var k := int(str(inputs[0])) if not inputs.is_empty() else 0
+		var ok: bool = value is Array and value.size() == k
+		if ok:
+			var seen := {}
+			for v in value:
+				if seen.has(v) or not v in mailbox_list:
+					ok = false
+				seen[v] = true
+		if not ok:
+			return "보고가 틀렸어요. mailboxes() 에서 서로 다른 %d명을 뽑아야 해요. 보고한 값: %s" % [k, _show(value)]
+		return ""
+	var want = expected_report()
 	if not _same_value(value, want):
 		return "보고가 틀렸어요. 보고한 값: %s / 실제 값: %s" % [_show(value), _show(want)]
 	return ""
@@ -322,6 +347,25 @@ func expected_report() -> Variant:
 			return answer
 		"count":
 			return picked.duplicate()
+		"distance":
+			var d := Vector2(goals[0] - _starts[0])
+			return roundf(sqrt(d.x * d.x + d.y * d.y) * 100.0) / 100.0
+		"gcd":
+			var a := int(picked.get("apple", 0))
+			var b := int(picked.get("carrot", 0))
+			while b != 0:
+				var t := a % b
+				a = b
+				b = t
+			return a
+		"most":
+			var best := ""
+			for k in picked:
+				if best == "" or int(picked[k]) > int(picked[best]):
+					best = k
+			return best
+		"sample":
+			return "mailboxes() 에서 서로 다른 %s명" % (str(inputs[0]) if not inputs.is_empty() else "?")
 		"price", "receipt":
 			var total := 0
 			for k in picked:
@@ -537,11 +581,32 @@ func failure() -> Dictionary:
 		return {"kind": "apples", "left": apple_total - collected}
 	if not wanted.is_empty() and not _same_value(_without_zeros(delivered), _without_zeros(wanted)):
 		return {"kind": "order"}
-	if report_kind != "" and (reported == null or not _same_value(reported, expected_report())):
+	if rule == "shortest" and steps_walked > shortest_walk():
+		return {"kind": "route", "steps": steps_walked, "best": shortest_walk()}
+	if report_kind != "" and (reported == null or _report_problem(reported) != ""):
 		return {"kind": "report"}
 	if speech != "" and not said_ok:
 		return {"kind": "speech"}
 	return {}
+
+
+## Fewest steps from the start through every item (in the best order) to the goal, on an open field.
+func shortest_walk() -> int:
+	var items: Array = _start_apples.keys()
+	var goal_cell: Vector2i = goals[0] if not goals.is_empty() else _starts[0]
+	return _best_walk(_starts[0], items, goal_cell)
+
+
+static func _best_walk(from: Vector2i, left: Array, goal_cell: Vector2i) -> int:
+	if left.is_empty():
+		return absi(goal_cell.x - from.x) + absi(goal_cell.y - from.y)
+	var best := 1 << 30
+	for k in left.size():
+		var p: Vector2i = left[k]
+		var rest := left.duplicate()
+		rest.remove_at(k)
+		best = mini(best, absi(p.x - from.x) + absi(p.y - from.y) + _best_walk(p, rest, goal_cell))
+	return best
 
 
 static func _without_zeros(d: Dictionary) -> Dictionary:
