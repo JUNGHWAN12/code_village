@@ -35,6 +35,8 @@ const TREES: PackedStringArray = [
 const DOOR: String = "EA03_Fence_WallGate_01a"
 const SIGN: String = "res://asset/props/EA03_Prop_Sign_RoadDirect_01a.fbx"
 const HORSE: String = "res://asset/props/EA_Animal_Horse_01a.fbx"
+const HOUSE_DOOR: String = "EA03_Prop_House_Door_01b"
+const PARCEL: String = "EA03_Prop_Container_Bag_02a"
 const PROP_PALETTE: String = "res://asset/glb/glb/EA03_Items_House_Apple_01a_EA03_FREE_Slavica.png"
 const GRASS_SHADER: Shader = preload("res://shaders/EA_GrassWind.gdshader")
 const TUFTS: PackedStringArray = ["EA03_Plant_Grass_01c", "EA03_Plant_Grass_01d", "EA03_Plant_Grass_01e"]
@@ -81,6 +83,8 @@ func build(world: GridWorld) -> void:
 				_add_blocker(p)
 	for p in world.apples:
 		_add_apple(p, world.apples[p])
+	for p in world.houses_at:
+		_add_house(world, p, str(world.houses_at[p]))
 	for g in world.goals:
 		_add_goal(g)
 	_add_doors(world)
@@ -278,6 +282,33 @@ func _add_apple(p: Vector2i, kind: String = "apple") -> void:
 
 
 ## A delivered item pops up over cell p and fades away.
+## A house front for cell p: a door at the back edge of the cell and a floating name plate.
+func _add_house(world: GridWorld, p: Vector2i, plate: String) -> void:
+	var back := Vector2i(0, -1) if world.cell(p + Vector2i(0, -1)) == "#" else Vector2i(0, 1)
+	var at := cell_to_world(p) + Vector3(back.x, 0, back.y) * CELL * 0.45
+	_spawn(HOUSE_DOOR, at, CELL * 0.55, 0.0 if back.y < 0 else PI)
+	var label := Label3D.new()
+	label.text = plate
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.pixel_size = 0.006
+	label.font_size = 72
+	label.outline_size = 18
+	label.modulate = Color(1.0, 0.93, 0.7)
+	label.outline_modulate = Color(0.12, 0.08, 0.04, 0.95)
+	label.position = surface(p) + Vector3(0, 2.4, 0)
+	add_child(label)
+
+
+## A parcel hops from the robot into the house at p.
+func show_parcel(p: Vector2i) -> void:
+	var item := _spawn(PARCEL, surface(p) + Vector3(0, 0.6, 0), 0.7, 0.0)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(item, "position", item.position + Vector3(0, 1.0, -CELL * 0.4), 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(item, "scale", Vector3.ONE * 0.01, 0.35).set_delay(0.45)
+	tw.chain().tween_callback(item.queue_free)
+
+
 func show_drop(p: Vector2i, kind: String) -> void:
 	var spec: Array = ITEMS.get(kind, ITEMS["apple"])
 	var item := _spawn(spec[0], surface(p) + Vector3(0, 0.6, 0), spec[1], 0.0)

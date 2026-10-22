@@ -60,6 +60,8 @@ func _command(name: String, robot: int, args: Array) -> String:
 			return world.report(args[0])
 		"say":
 			return world.say(robot, args[0])
+		"deliver":
+			return world.deliver(robot)
 		"wait":
 			world.wait(robot)
 	return ""

@@ -69,6 +69,27 @@ func _expect_run_error(source: String, needle: String, label: String) -> void:
 	_expect(not r["ok"] and String(r["message"]).contains(needle), "%s -> %s" % [label, r["message"]])
 
 
+## Runs a shortcut program on the maps of the level titled `title` (all, or `only`) and expects it to
+## fail: either a runtime error containing `expect`, or a finished run whose failure() kind is `expect`.
+func _shortcut_fails(title: String, source: String, expect: String, only: Array = []) -> void:
+	var level: Dictionary = {}
+	for lvl in Levels.ALL:
+		if lvl["title"] == title:
+			level = lvl
+	var parsed := CodeInterpreter.new().parse(source)
+	if not parsed["ok"]:
+		_expect(false, "%s shortcut parses -> %s" % [title, parsed["message"]])
+		return
+	for i in Levels.maps(level).size():
+		if not only.is_empty() and not i in only:
+			continue
+		var run: Dictionary = await WorldHost.run_on_map(level, i, parsed["program"])
+		var result: Dictionary = run["result"]
+		var w: GridWorld = run["world"]
+		var failed: bool = String(result.get("message", "")).contains(expect) if not result["ok"] else w.failure().get("kind") == expect
+		_expect(failed, "%s map %d: a shortcut fails (%s) -> %s %s" % [title, i, expect, result.get("message", ""), w.failure()])
+
+
 func _run_all() -> void:
 	print("== Every script compiles ==")
 	for file in DirAccess.get_files_at("res://scripts"):
@@ -90,8 +111,12 @@ func _run_all() -> void:
 		var maps := Levels.maps(level)
 		for i in maps.size():
 			var text := "\n".join(PackedStringArray(maps[i]))
-			_expect(text.count("S") == 1 and text.count("G") == 1 + text.count("R"),
-					"%s map %d has one S and one G per robot" % [level["title"], i])
+			# Flag-choice levels have several G; delivery-order levels end at the last house, not on a G.
+			var flags_ok: bool = text.count("G") >= 2 if level.get("rule", "") == "nearest_flag" else (
+					text.count("G") == 0 if level.get("deliver", "") == "order" else text.count("G") == 1 + text.count("R"))
+			_expect(text.count("S") == 1 and flags_ok, "%s map %d has one S and the right goals" % [level["title"], i])
+			var plates: Array = Levels.for_map(level, i).get("houses", [])
+			_expect(text.count("M") == plates.size(), "%s map %d has a name plate per house" % [level["title"], i])
 		if not out["parsed"]["ok"]:
 			continue
 		var program: Array = out["parsed"]["program"]
@@ -489,6 +514,16 @@ func _run_python_more() -> void:
 	await _expect_print("class P:\n    def __init__(self, x=0, y=0):\n        self.x = x\n        self.y = y\np = P(y=5)\nprint(p.x, p.y)", "0 5", "keyword arguments to a class")
 	await _expect_print("print([*'ab', *[1]], (*range(2),), [*{'k': 1}])", "['a', 'b', 1] (0, 1) ['k']", "unpacking into lists and tuples")
 	await _expect_print("x = [1, 2, 3]\nx[1:] = [9]\nprint(x)\nx[1:1] = [7, 8]\nprint(x)\nx[::2] = ['a', 'b']\nprint(x)", "[1, 9]|[1, 7, 8, 9]|['a', 7, 'b', 9]", "slice assignment grows and shrinks")
+	await _expect_print("print(0.1 + 0.2, 1 / 3, 2 ** 0.5, 1e-5, 1e16, 1e15, 123456789.123, -0.5, 2.0, 1e22, 0.0001, 3.14e-10)", "0.30000000000000004 0.3333333333333333 1.4142135623730951 1e-05 1e+16 1000000000000000.0 123456789.123 -0.5 2.0 1e+22 0.0001 3.14e-10", "float printing")
+	await _expect_print("import math\nprint(math.gcd(12, 18), math.gcd(4, 6, 10), math.lcm(4, 6), math.factorial(5), math.isqrt(10), math.comb(5, 2), math.perm(5, 2), math.prod([1, 2, 3, 4]))\nprint(math.sin(0), math.cos(0), round(math.sin(math.pi / 2), 3), math.degrees(math.pi), math.radians(180), math.log(math.e), math.log10(1000), math.log2(8), math.log(8, 2), math.exp(0))\nprint(math.hypot(3, 4), math.dist((0, 0), (3, 4)), math.fabs(-2), math.trunc(-2.7), math.floor(-2.5), math.ceil(2.1), math.inf > 10 ** 9, math.e, math.tau, math.isclose(0.1 + 0.2, 0.3), math.atan2(1, 1) == math.pi / 4)", "6 2 12 120 3 10 20 24|0.0 1.0 1.0 180.0 3.141592653589793 1.0 3.0 3.0 3.0 1.0|5.0 5.0 2.0 -2 -3 3 True 2.718281828459045 6.283185307179586 True True", "math functions")
+	await _expect_print("import random\nx = [1, 2, 3, 4, 5]\nrandom.shuffle(x)\nprint(sorted(x), len(random.sample(x, 3)), len(set(random.sample(x, 5))), 1 <= random.uniform(1, 2) <= 2, random.randrange(10) < 10, random.randrange(2, 3), random.randrange(0, 10, 5) in [0, 5])\nrandom.seed(5)\na = random.random()\nrandom.seed(5)\nprint(a == random.random())", "[1, 2, 3, 4, 5] 3 5 True True 2 True|True", "random module")
+	await _expect_print("from collections import Counter\nc = Counter('banana')\nprint(c, c['a'], c['z'], c.most_common(1), c.most_common(2))\nc.update(['a', 'z'])\nprint(c['a'], c['z'], c.total(), sorted(c.elements())[:3], len(c))\nprint(Counter([1, 1, 2]) + Counter([2, 3]), Counter('aab') - Counter('a'), dict(Counter('xyx')), Counter())", "Counter({'a': 3, 'n': 2, 'b': 1}) 3 0 [('a', 3)] [('a', 3), ('n', 2)]|4 1 8 ['a', 'a', 'a'] 4|Counter({1: 2, 2: 2, 3: 1}) Counter({'a': 1, 'b': 1}) {'x': 2, 'y': 1} Counter()", "collections.Counter")
+	await _expect_print("from collections import defaultdict\nd = defaultdict(int)\nfor w in ['a', 'b', 'a']:\n    d[w] += 1\nprint(d, d['a'], dict(d))\ng = defaultdict(list)\ng['x'].append(1)\ng['x'].append(2)\nprint(g['x'], len(g), 'y' in g)", "defaultdict(<class 'int'>, {'a': 2, 'b': 1}) 2 {'a': 2, 'b': 1}|[1, 2] 1 False", "collections.defaultdict")
+	await _expect_print("from collections import deque\nq = deque([1, 2, 3])\nq.append(4)\nq.appendleft(0)\nprint(q, q.popleft(), q.pop(), q, len(q), q[0], q[-1], 2 in q)\nq.rotate(1)\nprint(q)\nq.rotate(-1)\nq.extendleft([9, 8])\nprint(q, list(q))\nr = deque(maxlen=2)\nfor i in range(4):\n    r.append(i)\nprint(r)", "deque([1, 2, 3]) 0 4 deque([1, 2, 3]) 3 1 3 True|deque([3, 1, 2])|deque([8, 9, 1, 2, 3]) [8, 9, 1, 2, 3]|deque([2, 3], maxlen=2)", "collections.deque")
+	await _expect_print("import statistics\nprint(statistics.mean([1, 2, 3]), statistics.mean([1, 2]), statistics.mean([1.5, 2.5]), statistics.median([3, 1, 2]), statistics.median([1, 2, 3, 4]), statistics.mode(['a', 'b', 'b', 'a', 'b']), statistics.median([5, 1]))", "2 1.5 2.0 2 2.5 b 3.0", "statistics")
+	await _expect_print("import itertools\nprint(list(itertools.permutations([1, 2, 3])))\nprint(list(itertools.permutations('abc', 2)), list(itertools.combinations([1, 2, 3, 4], 2)))\nprint(list(itertools.product('ab', [0, 1])), list(itertools.product([0, 1], repeat=2)), list(itertools.chain([1], (2, 3))), list(itertools.accumulate([1, 2, 3, 4])))\nit = itertools.combinations('xyz', 2)\nprint(next(it), min(itertools.permutations([3, 1, 2])))", "[(1, 2, 3), (1, 3, 2), (2, 1, 3), (2, 3, 1), (3, 1, 2), (3, 2, 1)]|[('a', 'b'), ('a', 'c'), ('b', 'a'), ('b', 'c'), ('c', 'a'), ('c', 'b')] [(1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)]|[('a', 0), ('a', 1), ('b', 0), ('b', 1)] [(0, 0), (0, 1), (1, 0), (1, 1)] [1, 2, 3] [1, 3, 6, 10]|('x', 'y') (1, 2, 3)", "itertools")
+	await _expect_print("import string, time\ntime.sleep(0)\nprint(string.ascii_lowercase[:5], string.ascii_uppercase[-3:], string.digits, len(string.ascii_letters), '!' in string.punctuation)", "abcde XYZ 0123456789 52 True", "string and time")
+	await _expect_print("time = 3\nstring = 'abc'\nprint(time + 1, string)", "4 abc", "module names are free before import")
 
 	print("== More Python: errors and input() ==")
 	await _expect_run_error("def f(a, b=1):\n    pass\nf(1, 2, 3)", "1~2개", "too many values with a default")
@@ -513,3 +548,34 @@ func _run_python_more() -> void:
 	var ir: Dictionary = await interp.run(ip["program"], ih, 1)
 	_expect(ir["ok"] and "|".join(ih.out) == "이름? 철수|3|철수철수철수!", "input() takes the prepared answers -> %s %s" % ["|".join(ih.out), ir.get("message", "")])
 	_expect(CodeInterpreter.count_code_lines("x = (1,\n     2)\n\"\"\"doc\"\"\"") == 3, "count_code_lines counts physical lines")
+
+	print("== Module levels ==")
+	var shortest: Dictionary = {}
+	for lvl in Levels.ALL:
+		if lvl.get("rule", "") == "shortest":
+			shortest = lvl
+	var greedy := "def go(tx, ty):\n    x, y = get_pos()\n    face(\"E\" if tx > x else \"W\")\n    repeat abs(tx - x):\n        move()\n    face(\"S\" if ty > y else \"N\")\n    repeat abs(ty - y):\n        move()\nwhile treasure_map():\n    x, y = get_pos()\n    tx, ty = min(treasure_map(), key=lambda p: abs(p[0] - x) + abs(p[1] - y))\n    go(tx, ty)\n    pick()\ngo(*goal_pos())\n"
+	var in_order := greedy.substr(0, greedy.find("while")) + "for x, y in treasure_map():\n    go(x, y)\n    pick()\ngo(*goal_pos())\n"
+	for naive in [greedy, in_order]:
+		for i in Levels.maps(shortest).size():
+			var gp := CodeInterpreter.new().parse(naive)
+			var gr: Dictionary = await WorldHost.run_on_map(shortest, i, gp["program"])
+			var gw: GridWorld = gr["world"]
+			_expect(gr["result"]["ok"] and gw.failure().get("kind") == "route", "a naive order loses on the shortest-route map %d -> %s" % [i, gw.failure()])
+	# Levels where the computed answer decides what the robot does: shortcuts must fail on every map.
+	var go_fn := greedy.substr(0, greedy.find("while"))
+	await _shortcut_fails("짝수 우편함", "while not at_goal():\n    move()\n    n = house_here()\n    if n is not None and n % 2 == 0:\n        deliver()\n", "delivery")
+	await _shortcut_fails("당번 뽑기", "import random\nk = int(input())\nwhile not at_goal():\n    move()\n    if house_here() is not None:\n        deliver()\n", "delivery")
+	await _shortcut_fails("당번 뽑기", "import random\nk = int(input())\nmove()\nmove()\ndeliver()\ndeliver()\n", "이미 배달")
+	await _shortcut_fails("빵집 대기줄", "while not is_blocked():\n    move()\n    if house_here() in ['민지', '할머니', '철수', '다솜', '가온', '나래', '해', '달', '별', '구름']:\n        deliver()\n", "delivery")
+	await _shortcut_fails("곧은 거리", go_fn + "x, y = get_pos()\nfx, fy = min(flags(), key=lambda f: abs(f[0] - x) + abs(f[1] - y))\ngo(fx, fy)\n", "flag")
+	await _shortcut_fails("숫자만 골라 더하기", "while not at_goal():\n    if is_blocked():\n        say(len(mailboxes()))\n    move()\n", "열리지 않아요")
+	await _shortcut_fails("사과 무게", "import statistics\nw = mailboxes()\ncodes = [statistics.median(w), statistics.mean(w)]\nwhile not at_goal():\n    if is_blocked():\n        say(codes.pop(0))\n    move()\n", "열리지 않아요", [0])
+	var blocked := CodeInterpreter.new().parse("import os")
+	_expect(not blocked["ok"] and String(blocked["message"]).contains("파일"), "import os explains why -> %s" % blocked["message"])
+	await _expect_run_error("import math\nprint(math.factorial(25))", "20", "factorial range")
+	await _expect_run_error("import statistics\nprint(statistics.mean([]))", "값이 없어요", "mean of nothing")
+	await _expect_run_error("import random\nrandom.sample([1], 2)", "뽑을 수 없어요", "sample too large")
+	await _expect_run_error("from collections import deque\ndeque().popleft()", "popleft", "popleft on empty")
+	var reuse := CodeInterpreter.new().parse("import math\nmath = 3")
+	_expect(not reuse["ok"] and String(reuse["message"]).contains("이미 있는 이름"), "an imported module name cannot be reused")
