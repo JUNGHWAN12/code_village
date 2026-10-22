@@ -1,0 +1,18 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Licensed third-party assets (EmacEArt: no redistribution of the files themselves).
+# Copy these in separately after cloning (see CLAUDE.md).
+/asset/
+/shaders/EA_*.gdshader
+/shaders/sky_slavica.tres
+
+# Separate repository (has its own .git)
+/godot-claude-skills/
+
+# Per-machine settings and export output
+.claude/settings.local.json
+export_presets.cfg
+/build/
+/export/

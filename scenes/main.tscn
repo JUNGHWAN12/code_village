@@ -1,0 +1,372 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/board.gd" id="2_board"]
+[ext_resource type="Script" path="res://scripts/robot.gd" id="3_robot"]
+[ext_resource type="Script" path="res://scripts/camera_rig.gd" id="4_cam"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
+sky_top_color = Color(0.32, 0.52, 0.8, 1)
+sky_horizon_color = Color(0.85, 0.8, 0.7, 1)
+ground_bottom_color = Color(0.22, 0.26, 0.16, 1)
+ground_horizon_color = Color(0.85, 0.8, 0.7, 1)
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("SkyMat")
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+ambient_light_source = 3
+ambient_light_energy = 1.0
+tonemap_mode = 2
+tonemap_exposure = 1.1
+tonemap_white = 4.0
+ssao_enabled = true
+ssao_radius = 1.5
+ssao_intensity = 1.6
+glow_enabled = true
+glow_intensity = 0.6
+glow_bloom = 0.05
+fog_enabled = true
+fog_light_color = Color(0.8, 0.82, 0.84, 1)
+fog_density = 0.0022
+fog_sky_affect = 0.3
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_main")
+
+[node name="Layout" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="LeftPanel" type="PanelContainer" parent="Layout"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"SidePanel"
+
+[node name="Margin" type="MarginContainer" parent="Layout/LeftPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="Layout/LeftPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="AppTitle" type="Label" parent="Layout/LeftPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.6, 0.45, 1)
+theme_override_font_sizes/font_size = 14
+text = "CODE VILLAGE · 코드로 움직이는 마을 로봇"
+
+[node name="LevelRow" type="HBoxContainer" parent="Layout/LeftPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PrevButton" type="Button" parent="Layout/LeftPanel/Margin/VBox/LevelRow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "이전 레벨"
+text = "◀"
+
+[node name="LevelTitle" type="Label" parent="Layout/LeftPanel/Margin/VBox/LevelRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"TitleLabel"
+text = "1. 첫 걸음"
+clip_text = true
+
+[node name="NextButton" type="Button" parent="Layout/LeftPanel/Margin/VBox/LevelRow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "다음 레벨"
+text = "▶"
+
+[node name="LevelSelect" type="OptionButton" parent="Layout/LeftPanel/Margin/VBox/LevelRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+tooltip_text = "레벨 고르기"
+
+[node name="GoalCard" type="PanelContainer" parent="Layout/LeftPanel/Margin/VBox"]
+layout_mode = 2
+theme_type_variation = &"CardPanel"
+
+[node name="GoalText" type="RichTextLabel" parent="Layout/LeftPanel/Margin/VBox/GoalCard"]
+unique_name_in_owner = true
+layout_mode = 2
+bbcode_enabled = true
+text = "목표"
+fit_content = true
+
+[node name="PaletteLabel" type="Label" parent="Layout/LeftPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.6, 0.45, 1)
+theme_override_font_sizes/font_size = 14
+text = "명령 블록 — 누르면 커서 위치에 들어가요"
+
+[node name="Palette" type="HFlowContainer" parent="Layout/LeftPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+
+[node name="CodeEdit" type="CodeEdit" parent="Layout/LeftPanel/Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 220)
+layout_mode = 2
+size_flags_vertical = 3
+placeholder_text = "여기에 코드를 적어요. 예: move()"
+caret_blink = true
+highlight_current_line = true
+draw_tabs = true
+gutters_draw_line_numbers = true
+indent_use_spaces = true
+indent_automatic = true
+auto_brace_completion_enabled = true
+auto_brace_completion_highlight_matching = true
+
+[node name="Controls" type="HBoxContainer" parent="Layout/LeftPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RunButton" type="Button" parent="Layout/LeftPanel/Margin/VBox/Controls"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(130, 44)
+layout_mode = 2
+tooltip_text = "코드 실행 (F5 / Ctrl+Enter)"
+theme_override_colors/font_color = Color(0.75, 1, 0.7, 1)
+theme_override_font_sizes/font_size = 19
+text = "▶ 실행"
+
+[node name="StepButton" type="Button" parent="Layout/LeftPanel/Margin/VBox/Controls"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+tooltip_text = "한 명령씩 실행해요 (F6)"
+text = "한 단계"
+
+[node name="ResetButton" type="Button" parent="Layout/LeftPanel/Margin/VBox/Controls"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+tooltip_text = "멈추고 처음 상태로 (Esc)"
+text = "■ 처음으로"
+
+[node name="Spacer" type="Control" parent="Layout/LeftPanel/Margin/VBox/Controls"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HintButton" type="Button" parent="Layout/LeftPanel/Margin/VBox/Controls"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "힌트"
+
+[node name="SpeedRow" type="HBoxContainer" parent="Layout/LeftPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SpeedLabel" type="Label" parent="Layout/LeftPanel/Margin/VBox/SpeedRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "속도"
+
+[node name="SpeedSlider" type="HSlider" parent="Layout/LeftPanel/Margin/VBox/SpeedRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.5
+max_value = 10.0
+step = 0.5
+value = 1.0
+
+[node name="SpeedValue" type="Label" parent="Layout/LeftPanel/Margin/VBox/SpeedRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "x1"
+
+[node name="ConsoleCard" type="PanelContainer" parent="Layout/LeftPanel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+theme_type_variation = &"CardPanel"
+
+[node name="Console" type="RichTextLabel" parent="Layout/LeftPanel/Margin/VBox/ConsoleCard"]
+unique_name_in_owner = true
+layout_mode = 2
+bbcode_enabled = true
+scroll_following = true
+selection_enabled = true
+
+[node name="ViewContainer" type="SubViewportContainer" parent="Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="Layout/ViewContainer"]
+msaa_3d = 2
+size = Vector2i(1040, 900)
+render_target_update_mode = 4
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Layout/ViewContainer/SubViewport"]
+environment = SubResource("Env")
+
+[node name="Sun" type="DirectionalLight3D" parent="Layout/ViewContainer/SubViewport"]
+transform = Transform3D(0.788011, 0, 0.615661, 0.484809, 0.615661, -0.620526, -0.379039, 0.788011, 0.485148, 0, 12, 0)
+light_color = Color(1, 0.95, 0.85, 1)
+light_energy = 1.9
+shadow_enabled = true
+directional_shadow_max_distance = 80.0
+
+[node name="CameraRig" type="Node3D" parent="Layout/ViewContainer/SubViewport"]
+unique_name_in_owner = true
+script = ExtResource("4_cam")
+
+[node name="Camera3D" type="Camera3D" parent="Layout/ViewContainer/SubViewport/CameraRig"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 20)
+current = true
+fov = 45.0
+far = 300.0
+
+[node name="Board" type="Node3D" parent="Layout/ViewContainer/SubViewport"]
+unique_name_in_owner = true
+script = ExtResource("2_board")
+
+[node name="Robot" type="Node3D" parent="Layout/ViewContainer/SubViewport"]
+unique_name_in_owner = true
+script = ExtResource("3_robot")
+
+[node name="Hud" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -420.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 56.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_type_variation = &"HudPanel"
+
+[node name="HudLabel" type="Label" parent="Hud"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "사과 0/0   ·   코드 0줄 / 목표 0줄"
+horizontal_alignment = 2
+
+[node name="ViewHint" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -420.0
+offset_top = -40.0
+offset_right = -16.0
+offset_bottom = -12.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.75)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_font_sizes/font_size = 13
+text = "드래그: 시점 회전   ·   휠: 확대/축소"
+horizontal_alignment = 2
+
+[node name="ResultOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="ResultOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.45)
+
+[node name="Center" type="CenterContainer" parent="ResultOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Card" type="PanelContainer" parent="ResultOverlay/Center"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_type_variation = &"PopupCard"
+
+[node name="VBox" type="VBoxContainer" parent="ResultOverlay/Center/Card"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ResultTitle" type="Label" parent="ResultOverlay/Center/Card/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+theme_override_font_sizes/font_size = 32
+text = "레벨 클리어!"
+horizontal_alignment = 1
+
+[node name="ResultStars" type="Label" parent="ResultOverlay/Center/Card/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.82, 0.35, 1)
+theme_override_font_sizes/font_size = 44
+text = "★★★"
+horizontal_alignment = 1
+
+[node name="ResultBody" type="Label" parent="ResultOverlay/Center/Card/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "코드 4줄 (목표 4줄)"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Buttons" type="HBoxContainer" parent="ResultOverlay/Center/Card/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="RetryButton" type="Button" parent="ResultOverlay/Center/Card/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 46)
+layout_mode = 2
+text = "다시 하기"
+
+[node name="ContinueButton" type="Button" parent="ResultOverlay/Center/Card/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 1, 0.7, 1)
+text = "다음 레벨 ▶"
