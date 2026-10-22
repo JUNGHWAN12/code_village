@@ -18,6 +18,11 @@ extends RefCounted
 ##   "customer" / "speech" customer() name, and a template say() must match, e.g. "{customer}님, 사과 {apples}개요"
 ##   "rule": "one_each"    pick exactly one item of every kind instead of all items
 ##   "horse_dir": "S"      direction the horses start walking in
+##   "rule": "nearest_first"  pick() only works on an item nearest to the start (Manhattan distance)
+##   "mailboxes" / "answer"   mailboxes() list, and the value report() must equal (report: "answer")
+##   "inputs": ["철수", "3"]  what input() returns, one answer per call (the villager's replies);
+##                           a "speech" template can use them as {in0}, {in1}, ...
+##   "report": "receipt"     report() must get "합계 1,234원" (the picked items' total price)
 
 ## Facing order is clockwise: N, E, S, W. Vector2i is (column, row).
 const DIRS: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
@@ -48,6 +53,11 @@ var customer_name: String = ""
 var speech: String = ""
 var rule: String = ""
 var said_ok: bool = false
+var mailbox_list: Array = []
+var answer: Variant = null
+var last_pick_error: String = ""  # why the last pick() failed under a rule ("" = nothing to pick)
+var inputs: Array = []  # answers input() hands out, in order
+var _input_at: int = 0
 
 ## Robot 0, for single-robot code.
 var robot: Vector2i:
@@ -110,6 +120,9 @@ func load_level(level: Dictionary) -> void:
 	customer_name = level.get("customer", "")
 	speech = level.get("speech", "")
 	rule = level.get("rule", "")
+	mailbox_list = level.get("mailboxes", [])
+	answer = level.get("answer")
+	inputs = level.get("inputs", []).duplicate()
 	_horse_dir0 = maxi(0, DIR_LETTERS.find(String(level.get("horse_dir", "S"))))
 	reset()
 
@@ -130,6 +143,7 @@ func reset() -> void:
 	for h in horses:
 		horse_dirs.append(_horse_dir0)
 	said_ok = false
+	_input_at = 0
 
 
 ## Item kinds on this map, e.g. ["apple", "corn"].
@@ -214,10 +228,20 @@ func turn_right(i: int = 0) -> void:
 	dirs[i] = (dirs[i] + 1) % 4
 
 
-## Picks whatever item is under the robot. Returns false when there is none.
+## Picks whatever item is under the robot. Returns false when there is none, or when a rule
+## forbids it (then last_pick_error says why).
 func pick(i: int = 0) -> bool:
+	last_pick_error = ""
 	if not apples.has(robots[i]):
 		return false
+	if rule == "nearest_first":
+		var here := _start_distance(robots[i])
+		var nearest := here
+		for p in apples:
+			nearest = mini(nearest, _start_distance(p))
+		if here > nearest:
+			last_pick_error = "더 가까운 보물부터 주워야 해요. (이 보물까지 %d칸, 가장 가까운 보물까지 %d칸)" % [here, nearest]
+			return false
 	var kind: String = apples[robots[i]]
 	apples.erase(robots[i])
 	collected += 1
@@ -276,27 +300,57 @@ func say(i: int, text: Variant) -> String:
 
 
 func expected_speech() -> String:
-	return speech.format({"customer": customer_name, "apples": int(picked.get("apple", 0)), "items": collected})
+	var values := {"customer": customer_name, "apples": int(picked.get("apple", 0)), "items": collected}
+	for k in inputs.size():
+		values["in%d" % k] = str(inputs[k])  # {in0}: the first input() answer
+	return speech.format(values)
 
 
 func wait(_i: int = 0) -> void:
 	pass
 
 
-## What report() must receive on this level: a dict of counts or a total price. null if unused.
+func _start_distance(p: Vector2i) -> int:
+	return absi(p.x - _starts[0].x) + absi(p.y - _starts[0].y)
+
+
+## What report() must receive on this level: a dict of counts, a total price or a given answer.
+## null if unused.
 func expected_report() -> Variant:
 	match report_kind:
+		"answer":
+			return answer
 		"count":
 			return picked.duplicate()
-		"price":
+		"price", "receipt":
 			var total := 0
 			for k in picked:
 				total += int(prices.get(k, 0)) * int(picked[k])
+			if report_kind == "receipt":
+				return "합계 %s원" % _grouped(total)
 			return total
 	return null
 
 
+## 1234567 -> "1,234,567"
+static func _grouped(n: int) -> String:
+	var digits := str(absi(n))
+	var out := ""
+	for k in digits.length():
+		if k > 0 and (digits.length() - k) % 3 == 0:
+			out += ","
+		out += digits[k]
+	return ("-" if n < 0 else "") + out
+
+
 static func _same_value(a: Variant, b: Variant) -> bool:
+	if a is Array and b is Array:
+		if a.size() != b.size():
+			return false
+		for k in a.size():
+			if not _same_value(a[k], b[k]):
+				return false
+		return true
 	if a is Dictionary and b is Dictionary:
 		if a.size() != b.size():
 			return false
@@ -310,6 +364,8 @@ static func _same_value(a: Variant, b: Variant) -> bool:
 
 
 static func _show(v: Variant) -> String:
+	if v is Array:
+		return "[" + ", ".join(PackedStringArray(v.map(func(x: Variant) -> String: return _show(x)))) + "]"
 	if v is Dictionary:
 		var parts: PackedStringArray = []
 		for k in v:
@@ -383,6 +439,18 @@ func order(_i: int = 0) -> Dictionary:
 
 func market(_i: int = 0) -> Dictionary:
 	return prices.duplicate()
+
+
+## The next prepared answer for input(), or null when there are no more.
+func next_input() -> Variant:
+	if _input_at >= inputs.size():
+		return null
+	_input_at += 1
+	return str(inputs[_input_at - 1])
+
+
+func mailboxes(_i: int = 0) -> Array:
+	return mailbox_list.duplicate()
 
 
 func read_sign(_i: int = 0) -> String:

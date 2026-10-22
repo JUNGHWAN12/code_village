@@ -49,7 +49,9 @@ func _command(name: String, robot: int, args: Array) -> String:
 		"turn_right":
 			world.turn_right(robot)
 		"pick":
-			return "" if world.pick(robot) else "여기에는 주울 것이 없어요."
+			if world.pick(robot):
+				return ""
+			return world.last_pick_error if world.last_pick_error != "" else "여기에는 주울 것이 없어요."
 		"face":
 			return "" if world.face(robot, args[0]) >= 0 else FACE_ERROR % str(args[0])
 		"drop":
@@ -82,6 +84,14 @@ func show_step(_line: int, _text: String, _value: Variant) -> void:
 
 func print_line(_text: String) -> void:
 	pass
+
+
+## input(): the level's next prepared answer, echoed after the prompt like a terminal shows it.
+func input_line(prompt: String) -> Variant:
+	var answer: Variant = world.next_input()
+	if answer != null:
+		print_line(prompt + str(answer))
+	return answer
 
 
 func highlight_line(_line: int) -> void:
