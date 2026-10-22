@@ -142,11 +142,11 @@ func _card(c: int, stars: Array, unlocked: Callable, current: int) -> Control:
 		var btn := Button.new()
 		var s := int(stars[i])
 		var is_open: bool = unlocked.call(i)
-		btn.text = "%d\n%s" % [i + 1, ("★".repeat(s) + "☆".repeat(3 - s)) if is_open else "🔒"]
+		btn.text = "%d\n%s" % [Levels.number(i),("★".repeat(s) + "☆".repeat(3 - s)) if is_open else "🔒"]
 		btn.custom_minimum_size = Vector2(54, 50)
 		btn.add_theme_font_size_override("font_size", 14)
 		btn.disabled = not is_open
-		btn.tooltip_text = Levels.ALL[i]["title"]
+		btn.tooltip_text = Levels.title(i)
 		if i == current:
 			btn.add_theme_color_override("font_color", GOLD)
 		btn.pressed.connect(func() -> void:

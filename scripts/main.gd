@@ -14,7 +14,9 @@ const COLOR_VAR := Color(0.95, 0.72, 0.92)
 ## Methods that take a value: completion inserts "name(" instead of "name()".
 const VALUE_METHODS: PackedStringArray = [
 	"append", "get", "add", "pop", "remove", "split", "join", "replace", "count", "index", "insert",
-	"discard", "startswith", "endswith",
+	"discard", "startswith", "endswith", "extend", "update", "setdefault", "find", "rfind", "zfill",
+	"center", "ljust", "rjust", "format", "union", "intersection", "difference", "symmetric_difference",
+	"issubset", "issuperset", "isdisjoint", "strip", "lstrip", "rstrip",
 ]
 const VILLAGER_SCALE: float = 1.6
 const BUBBLE_TOP_MARGIN: float = 60.0
@@ -159,6 +161,43 @@ const PALETTE_MORE: Dictionary = {
 		[".add()", ".add()", "집합에 값을 넣어요", COLOR_VAR, true],
 		["not in", " not in ", "들어 있지 않은지 확인해요", COLOR_FLOW, true],
 	],
+	"input": [
+		["input(\"질문\")", "input(\"\")", "마을 사람에게 묻고, 대답(글자)을 돌려받아요", COLOR_VAR, true],
+		["name = input(...)", "name = input(\"이름이 뭐예요? \")\n", "대답을 변수에 담아 둬요", COLOR_VAR, false],
+	],
+	"fstring_say": [
+		["say(f\"...\")", "say(f\"{name}\")", "f-문자열로 만든 말을 해요", COLOR_CMD, false],
+	],
+	"int_input": [
+		["int(input(...))", "int(input(\"\"))", "대답을 숫자로 바꿔요: \"3\" → 3", COLOR_VAR, true],
+	],
+	"drop": [["drop(\"apple\")", "drop()", "목표에서 하나 배달해요", COLOR_CMD, false]],
+	"format_spec": [
+		["{x:,}", "{total:,}", "f-문자열 안에서 세 자리마다 쉼표: 12500 → 12,500", COLOR_VAR, true],
+		["{x:>5}", "{x:>5}", "다섯 칸 오른쪽 정렬", COLOR_VAR, true],
+		["{x:.2f}", "{x:.2f}", "소수 둘째 자리까지", COLOR_VAR, true],
+	],
+	"ord_chr": [
+		["ord(\"a\")", "ord()", "글자의 번호: ord(\"a\") → 97", COLOR_VAR, true],
+		["chr(97)", "chr()", "번호의 글자: chr(97) → \"a\"", COLOR_VAR, true],
+		["% 26", " % 26", "26으로 나눈 나머지: 알파벳 끝에서 처음으로 돌아가요", COLOR_VAR, true],
+	],
+	"map_filter": [
+		["filter(함수, 목록)", "filter(lambda s: s.isdigit(), )", "함수가 True 인 값만 골라요", COLOR_VAR, true],
+		["map(함수, 목록)", "map(int, )", "값마다 함수를 적용해요: map(int, [\"1\"]) → [1]", COLOR_VAR, true],
+		["sum()", "sum()", "모두 더해요", COLOR_VAR, true],
+		[".isdigit()", ".isdigit()", "숫자로만 된 글자인지", COLOR_VAR, true],
+	],
+	"comprehension": [
+		["[x for x in 목록]", "[x for x in ]", "목록의 값마다 계산해서 새 목록을 만들어요", COLOR_VAR, true],
+		["... if 조건]", " if ", "조건에 맞는 값만 골라요: [n for n in 목록 if n > 0]", COLOR_FLOW, true],
+	],
+	"mailboxes": [["mailboxes()", "mailboxes()", "우편함 번호 목록", COLOR_COND, true]],
+	"sort_key": [
+		["sorted(목록, key=...)", "sorted(, key=lambda p: )", "key 가 돌려준 값 순서대로 줄을 세워요", COLOR_VAR, true],
+		["lambda p: ...", "lambda p: ", "이름 없는 작은 함수: 값 p 를 받아 계산 결과를 돌려줘요", COLOR_FLOW, true],
+		["sx, sy = get_pos()", "sx, sy = get_pos()", "지금(출발) 위치를 기억해요", COLOR_VAR, false],
+	],
 	"try": [
 		["try / except", "try:
     
@@ -174,7 +213,8 @@ const TOOL_ORDER: PackedStringArray = [
 	"move", "turn", "pick", "repeat", "for", "for_in", "for_robots", "while", "if", "elif", "else",
 	"cond", "not", "var", "ops", "print", "def", "pos", "apples", "abs", "math", "route", "segments",
 	"list", "random", "robots", "class", "tuple_pos", "treasure", "items", "dict", "order", "market", "report",
-	"strings", "fstring", "set", "try",
+	"strings", "fstring", "set", "try", "comprehension", "mailboxes", "sort_key",
+	"input", "fstring_say", "int_input", "drop", "format_spec", "ord_chr", "map_filter",
 ]
 
 var _level_index: int = 0
@@ -211,6 +251,8 @@ var _ref_steps: Dictionary = {}  # "level:map" -> commands the reference solutio
 var _menu: ChapterMenu
 var _fast_btn: Button
 var _mute_btn: Button
+var _input_box: LineEdit  # where the player types an answer for input() (levels without prepared answers)
+var _input_answer: Variant = null  # the submitted text while input() waits
 var _press_pos: Vector2 = Vector2(-1000, -1000)
 var _word_re := RegEx.create_from_string("([A-Za-z_][A-Za-z_0-9]*)$")
 var _dot_re := RegEx.create_from_string("([A-Za-z_][A-Za-z_0-9]*)\\.([A-Za-z_0-9]*)$")
@@ -265,8 +307,8 @@ func _ready() -> void:
 	_menu.unlock_all_toggled.connect(_on_unlock_all_toggled)
 	_refresh_level_select()
 	var start_level := clampi(int(_progress.get_value("meta", "last_level", 0)), 0, Levels.ALL.size() - 1)
-	while start_level > 0 and not _unlocked(start_level):
-		start_level -= 1
+	while Levels.prev_of(start_level) >= 0 and not _unlocked(start_level):
+		start_level = Levels.prev_of(start_level)
 	_load_level(start_level)
 	if _dev_args.is_empty():
 		_open_menu()
@@ -295,6 +337,13 @@ func _setup_extra_ui() -> void:
 	var title_row := %PrevButton.get_parent()
 	title_row.add_child(chapters)
 	title_row.move_child(chapters, 0)
+	_input_box = LineEdit.new()
+	_input_box.placeholder_text = "input() 의 대답을 적고 Enter"
+	_input_box.visible = false
+	_input_box.text_submitted.connect(func(text: String) -> void: _input_answer = text)
+	var console_card := _console.get_parent()
+	console_card.get_parent().add_child(_input_box)
+	console_card.get_parent().move_child(_input_box, console_card.get_index() + 1)
 
 
 ## Stylized sky (EmacEArt shader) instead of the plain procedural one; it also lights the scene.
@@ -337,9 +386,9 @@ func _connect_ui() -> void:
 	_step_btn.pressed.connect(_on_step_pressed)
 	_reset_btn.pressed.connect(_on_reset_pressed)
 	%HintButton.pressed.connect(_on_hint_pressed)
-	%PrevButton.pressed.connect(func() -> void: _change_level(_level_index - 1))
-	%NextButton.pressed.connect(func() -> void: _change_level(_level_index + 1))
-	_level_select.item_selected.connect(_change_level)
+	%PrevButton.pressed.connect(func() -> void: _change_level(Levels.prev_of(_level_index)))
+	%NextButton.pressed.connect(func() -> void: _change_level(Levels.next_of(_level_index)))
+	_level_select.item_selected.connect(func(item: int) -> void: _change_level(_level_select.get_item_id(item)))
 	%SpeedSlider.value_changed.connect(_on_speed_changed)
 	%RetryButton.pressed.connect(_on_retry_pressed)
 	%ContinueButton.pressed.connect(_on_continue_pressed)
@@ -348,16 +397,16 @@ func _connect_ui() -> void:
 
 func _refresh_level_select() -> void:
 	_level_select.clear()
-	for i in Levels.ALL.size():
+	for i in Levels.order():
 		var stars := _stars(i)
-		var label := "레벨 %d" % (i + 1)
+		var label := "레벨 %d" % Levels.number(i)
 		if not _unlocked(i):
 			label = "🔒 " + label
 		elif stars > 0:
 			label += "  " + "★".repeat(stars)
 		_level_select.add_item(label, i)
-		_level_select.set_item_disabled(i, not _unlocked(i))
-	_level_select.select(_level_index)
+		_level_select.set_item_disabled(_level_select.get_item_index(i), not _unlocked(i))
+	_select_current()
 	_update_nav()
 
 
@@ -369,16 +418,23 @@ func _unlock_all() -> bool:
 	return bool(_progress.get_value("meta", "unlock_all", false))
 
 
-## A level opens once the one before it is cleared (dev runs and "모든 레벨 열기" open everything).
+## A level opens once the one before it (in play order) is cleared; dev runs and
+## "모든 레벨 열기" open everything.
 func _unlocked(i: int) -> bool:
 	var dev_open := not _dev_args.is_empty() and not _dev_args.has("locks")
-	return i <= 0 or _unlock_all() or dev_open or _stars(i - 1) > 0
+	var prev := Levels.prev_of(i)
+	# A level already cleared stays open even if a new level was inserted before it.
+	return prev < 0 or _unlock_all() or dev_open or _stars(prev) > 0 or _stars(i) > 0
+
+
+func _select_current() -> void:
+	_level_select.select(_level_select.get_item_index(_level_index))
 
 
 func _update_nav() -> void:
-	%PrevButton.disabled = _running or _level_index == 0
-	var next := _level_index + 1
-	%NextButton.disabled = _running or next >= Levels.ALL.size() or not _unlocked(next)
+	%PrevButton.disabled = _running or Levels.prev_of(_level_index) < 0
+	var next := Levels.next_of(_level_index)
+	%NextButton.disabled = _running or next < 0 or not _unlocked(next)
 
 
 func _open_menu() -> void:
@@ -431,7 +487,7 @@ func _build_palette(tools: Array, banned: Array) -> void:
 
 func _change_level(index: int) -> void:
 	if _running or index < 0 or index >= Levels.ALL.size() or not _unlocked(index):
-		_level_select.select(_level_index)
+		_select_current()
 		return
 	_load_level(index)
 
@@ -444,7 +500,7 @@ func _load_level(index: int) -> void:
 	var level: Dictionary = Levels.ALL[index]
 	_show_map(0)
 
-	_level_title.text = level["title"]
+	_level_title.text = Levels.title(index)
 	var goal: String = level["goal"]
 	var banned: Array = level.get("banned", [])
 	if not banned.is_empty():
@@ -453,7 +509,7 @@ func _load_level(index: int) -> void:
 			names.append(b + "()")
 		goal += "\n[color=#ff9f8a]이 레벨에서 못 쓰는 것: %s[/color]" % ", ".join(names)
 	_goal_text.text = goal
-	_level_select.select(index)
+	_select_current()
 	_update_nav()
 	_build_palette(level["tools"], level.get("banned", []))
 
@@ -466,7 +522,7 @@ func _load_level(index: int) -> void:
 	_result.hide()
 
 	_console.clear()
-	_log("[b]%s[/b]" % level["title"], "#ffd36b")
+	_log("[b]%s[/b]" % Levels.title(index), "#ffd36b")
 	_log("코드를 적고 [b]▶ 실행[/b]을 눌러요. 막히면 [b]힌트[/b]!")
 	_update_hud()
 	_hint_stage = 0
@@ -849,6 +905,37 @@ func print_line(text: String) -> void:
 	_log(_escape(text), "#f2ead8")
 
 
+## input(): the villager answers with the level's next prepared answer ("inputs"); levels without
+## prepared answers let the player type one. null when the run was stopped.
+func input_line(prompt: String) -> Variant:
+	await _wait_step()
+	if _stop_requested:
+		return null
+	var answer: Variant = _world.next_input()
+	if answer != null:
+		_log(_escape(prompt) + "[color=#9fd4ff]%s[/color]" % _escape(str(answer)), "#f2ead8")
+		if not _fast:
+			_npc_say([_escape(str(answer))], Villager.Mood.IDLE, 0.0, 1.2)
+			await get_tree().create_timer(maxf(0.4, _step_time() * 2.5)).timeout
+		return answer
+	if Levels.ALL[_level_index].has("input_lists"):
+		return null  # the villager has no more answers: EOFError, like Python at the end of input
+	_log(_escape(prompt) + "[color=#9fd4ff](대답을 아래 칸에 적어 주세요)[/color]", "#f2ead8")
+	_input_answer = null
+	_input_box.text = ""
+	_input_box.placeholder_text = (prompt.strip_edges() + "  " if prompt.strip_edges() != "" else "") + "대답을 적고 Enter"
+	_input_box.visible = true
+	_input_box.grab_focus()
+	while _input_answer == null and not _stop_requested:
+		await get_tree().process_frame
+	_input_box.visible = false
+	_code.grab_focus()
+	if _stop_requested:
+		return null
+	_log("→ " + _escape(str(_input_answer)), "#9fd4ff")
+	return _input_answer
+
+
 ## In step mode every condition check and assignment is its own step, and is shown.
 ## `value` is the bool result of a condition, or null for an assignment.
 func show_step(line: int, text: String, value: Variant) -> void:
@@ -950,7 +1037,10 @@ func _command(name: String, robot: int, args: Array) -> String:
 				await node.shrug(t * 1.2)
 				return who + ("여기에는 사과가 없어요." if _world.item_kinds() == ["apple"] else "여기에는 주울 것이 없어요.")
 			var cell := _world.robots[robot]
-			_world.pick(robot)
+			if not _world.pick(robot):
+				_sfx.play("bump")
+				await node.shrug(t * 1.2)
+				return who + _world.last_pick_error
 			_sfx.play("pick", 0.05)
 			_board.collect_apple(cell)
 			await node.pick_up(t)
@@ -1085,7 +1175,8 @@ func _on_completion_requested() -> void:
 					options[n + "()"] = [CodeEdit.KIND_FUNCTION, n + ("(" if n in VALUE_METHODS else "()")]
 	else:
 		for kw in ["if", "elif", "else", "while", "for", "in", "not", "and", "or", "def", "return", "repeat",
-				"break", "continue", "pass", "import", "class", "True", "False", "None", "try", "except", "is"]:
+				"break", "continue", "pass", "import", "class", "True", "False", "None", "try", "except", "is",
+				"lambda", "from", "as", "assert", "del", "global", "raise", "finally"]:
 			options[kw] = [CodeEdit.KIND_PLAIN_TEXT, kw]
 		for n in CodeInterpreter.BUILTINS:
 			options[n + "()"] = [CodeEdit.KIND_FUNCTION, n + "("]
@@ -1167,14 +1258,14 @@ func _on_retry_pressed() -> void:
 
 func _on_continue_pressed() -> void:
 	_result.hide()
-	if _level_index + 1 < Levels.ALL.size():
-		_load_level(_level_index + 1)
+	if Levels.next_of(_level_index) >= 0:
+		_load_level(Levels.next_of(_level_index))
 	else:
 		_reset_board()
 
 
 func _show_result(stars: int, lines: int, par: int, steps: int = 0, ref: int = -1) -> void:
-	var last := _level_index == Levels.ALL.size() - 1
+	var last := Levels.next_of(_level_index) < 0
 	%ResultTitle.text = "모든 레벨 완료!" if last else "레벨 클리어!"
 	%ResultStars.text = "★".repeat(stars) + "☆".repeat(3 - stars)
 	var body := "코드 %d줄 · 목표 %d줄 이하" % [lines, par]
@@ -1304,6 +1395,7 @@ static func _escape(text: String) -> String:
 #   --step=N    instead of --solve: run in step mode and press "한 단계" N times
 #   --hint=N    press the hint button N times
 #   --fast      with --solve: run without animations
+#   --answer=A  with --solve: type A when input() asks the player (without it, stop at the input box)
 #   --menu      open the chapter screen   --locks  keep level locks (normally all open in dev runs)
 #   --complete=W  type W in an empty editor and open the completion list
 #   --click-villager  click the villager (asks for a hint)
@@ -1316,7 +1408,8 @@ func _run_dev_automation() -> void:
 	if args.is_empty():
 		return
 	if args.has("level"):
-		_load_level(clampi(int(args["level"]) - 1, 0, Levels.ALL.size() - 1))
+		var o := Levels.order()
+		_load_level(o[clampi(int(args["level"]) - 1, 0, o.size() - 1)])  # --level is the number players see
 	if args.has("map"):
 		_show_map(clampi(int(args["map"]), 0, Levels.maps(Levels.ALL[_level_index]).size() - 1))
 	if args.has("code"):
@@ -1335,6 +1428,11 @@ func _run_dev_automation() -> void:
 		_start_run(false, args.has("fast"))
 		while _running:
 			await get_tree().process_frame
+			if _input_box.visible:
+				if not args.has("answer"):
+					break  # leave the input box open for the screenshot
+				await get_tree().create_timer(0.8).timeout
+				_input_box.text_submitted.emit(String(args["answer"]))
 		await get_tree().create_timer(1.5).timeout
 		print("DEV solved=%s apples=%d/%d map=%d" % [_world.is_solved(), _world.collected, _world.apple_total, _map_index])
 	for i in int(args.get("hint", "0")):

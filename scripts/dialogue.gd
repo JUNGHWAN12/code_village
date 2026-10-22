@@ -323,6 +323,49 @@ const LEVELS: Array[Dictionary] = [
 		"hints": ["[code]try: move()[/code] 를 해 보고, [code]except Blocked:[/code] 에서 [code]wait()[/code] 하게.", "기다리는 동안 말이 한 칸 지나가지. 그다음에 다시 가면 돼."],
 		"success": "말을 놀라게 하지 않고 지나갔군. 훌륭해!",
 	},
+	# Added later (same order as the end of Levels.ALL)
+	{
+		"who": "toma",
+		"intro": ["우편함 번호 목록이 왔어요. 이번엔 짝수 집에만 배달해요!", "목록에서 짝수만 골라 [code]report()[/code] 로 알려 주세요. 한 줄로요!"],
+		"hints": ["[code]n % 2 == 0[/code] 이면 짝수예요.", "[code][n for n in 목록 if 조건][/code] 은 조건에 맞는 것만 모은 새 목록이에요."],
+		"success": "짝수 집만 쏙쏙! 깔끔한 목록이에요.",
+	},
+	{
+		"who": "mikhail",
+		"intro": ["이번 보물 지도는 순서가 뒤죽박죽이야.", "출발점에서 가까운 보물부터 주워야 하네. 먼 것부터 주우면 안 돼."],
+		"hints": ["출발점과의 거리는 [code]abs(x - sx) + abs(y - sy)[/code] 지.", "[code]sorted(목록, key=lambda p: ...)[/code] 는 lambda 가 돌려준 값 순서대로 줄을 세우네."],
+		"success": "가까운 것부터 차례차례. 노련한 탐험가로군!",
+	},
+	{
+		"who": "anna",
+		"intro": ["처음 보는 로봇이네요!", "제 이름이 궁금하면 [code]input(\"이름이 뭐예요? \")[/code] 으로 물어봐 주세요. 대답해 줄게요."],
+		"hints": ["[code]name = input(\"이름이 뭐예요? \")[/code] 하면 제 대답이 name 에 담겨요.", "인사는 [code]say(f\"어서 오세요, {name}님!\")[/code] 처럼요."],
+		"success": "제 이름을 기억해 줬군요! 반가워요.",
+	},
+	{
+		"who": "boris",
+		"intro": ["주문하러 왔소. 뭘, 몇 개 원하는지는 물어보시오.", "대답은 늘 글자로 하겠소. \"3\" 은 숫자가 아니라 글자요."],
+		"hints": ["[code]n = int(input(\"몇 개 드릴까요? \"))[/code] 처럼 int() 로 감싸면 숫자가 되오.", "목표에 가서 [code]repeat n:[/code] 안에 [code]drop(item)[/code]."],
+		"success": "딱 주문한 만큼이군. 셈이 정확하오.",
+	},
+	{
+		"who": "olga",
+		"intro": ["이번엔 값이 큰 채소들이에요. 영수증이 필요해요.", "\"합계 12,500원\" 처럼 세 자리마다 쉼표를 찍어 주세요."],
+		"hints": ["f-문자열에서 [code]{total:,}[/code] 는 쉼표를 찍어 줘요.", "[code]report(f\"합계 {total:,}원\")[/code]"],
+		"success": "깔끔한 영수증이네요. 장부에 붙여 둘게요!",
+	},
+	{
+		"who": "vera",
+		"intro": ["문에 이상한 글자가 적혀 있어요. 옛날 로마 장군이 쓰던 암호래요.", "글자마다 3칸씩 밀려 있대요. 되돌리면 암호가 나와요."],
+		"hints": ["[code]ord(\"d\") - 3[/code] 은 [code]ord(\"a\")[/code] 와 같아요. 다시 [code]chr()[/code] 로 글자로 바꿔요.", "a 앞으로 넘어가면 z 로 돌아오게 [code]% 26[/code] 을 써요."],
+		"success": "암호를 풀었어요! 로마 장군도 깜짝 놀라겠어요.",
+	},
+	{
+		"who": "toma",
+		"intro": ["우편함 쪽지에 장난꾸러기가 글자를 섞어 놨어요!", "숫자 쪽지만 골라서 더해 주세요."],
+		"hints": ["[code]\"12\".isdigit()[/code] 는 True, [code]\"x3\".isdigit()[/code] 는 False 예요.", "[code]filter(조건함수, 목록)[/code] 은 고르고, [code]map(int, 목록)[/code] 은 모두 숫자로 바꿔요."],
+		"success": "숫자만 쏙쏙 골라 더했네요. 고마워요!",
+	},
 ]
 
 
