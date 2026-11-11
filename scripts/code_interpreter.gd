@@ -72,8 +72,39 @@ const REQUIRED_MESSAGES: Dictionary = {
 	"input": "이 레벨은 input() 으로 마을 사람에게 물어봐서 풀어요. 예: name = input(\"이름이 뭐예요? \")",
 }
 const MODULES: Dictionary = {
-	"math": ["sqrt", "floor", "ceil", "pow", "pi"],
-	"random": ["randint", "choice", "random"],
+	"math": [
+		"sqrt", "floor", "ceil", "pow", "pi", "e", "tau", "inf", "nan", "gcd", "lcm", "factorial", "isqrt",
+		"sin", "cos", "tan", "asin", "acos", "atan", "atan2", "radians", "degrees", "log", "log10", "log2",
+		"exp", "fabs", "hypot", "trunc", "comb", "perm", "prod", "dist", "isclose",
+	],
+	"random": ["randint", "choice", "random", "shuffle", "sample", "uniform", "randrange", "seed"],
+	"collections": ["Counter", "defaultdict", "deque"],
+	"statistics": ["mean", "median", "mode"],
+	"itertools": ["permutations", "combinations", "product", "chain", "accumulate"],
+	"time": ["sleep"],
+	"string": ["ascii_lowercase", "ascii_uppercase", "ascii_letters", "digits", "punctuation"],
+}
+## Module values that are not functions.
+const MODULE_CONSTS: Dictionary = {
+	"math.pi": PI, "math.e": 2.718281828459045, "math.tau": TAU, "math.inf": INF, "math.nan": NAN,
+	"string.ascii_lowercase": "abcdefghijklmnopqrstuvwxyz",
+	"string.ascii_uppercase": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	"string.ascii_letters": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	"string.digits": "0123456789",
+	"string.punctuation": "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+}
+## name=value arguments module functions accept.
+const MODULE_KWARGS: Dictionary = {
+	"itertools.permutations": ["r"], "itertools.combinations": ["r"], "itertools.product": ["repeat"],
+	"collections.deque": ["maxlen"], "math.isclose": ["rel_tol", "abs_tol"],
+}
+## Real Python modules this game leaves out on purpose, and why (shown when imported).
+const BLOCKED_MODULES: Dictionary = {
+	"os": "컴퓨터의 파일과 폴더를 다루는 모듈", "sys": "Python 프로그램 자체를 다루는 모듈",
+	"subprocess": "다른 프로그램을 실행하는 모듈", "shutil": "파일을 복사하고 지우는 모듈",
+	"pathlib": "파일 경로를 다루는 모듈", "socket": "네트워크 모듈", "urllib": "인터넷 모듈",
+	"requests": "인터넷 모듈", "threading": "여러 일을 동시에 하는 모듈", "json": "파일로 데이터를 저장하는 모듈",
+	"datetime": "날짜와 시각 모듈", "re": "정규 표현식 모듈", "pickle": "파일로 데이터를 저장하는 모듈",
 }
 const KEYWORDS: PackedStringArray = [
 	"if", "elif", "else", "while", "for", "in", "repeat", "def", "return", "break", "continue",
@@ -357,6 +388,11 @@ func _fail(line: int, message: String) -> Dictionary:
 func _bad(message: String) -> Dictionary:
 	_fail(_line, message)
 	return {}
+
+
+## A module name the program has imported (it cannot also be a variable, function or class name).
+func _module_taken(name: String) -> bool:
+	return MODULES.has(name) and _features.has(name)
 
 
 func _is_builtin_name(name: String) -> bool:
@@ -1006,7 +1042,7 @@ func _parse_def(ln: Dictionary, indent: int) -> Dictionary:
 	if nt["t"] != "name" or nt["v"] in KEYWORDS:
 		return _bad("def 뒤에는 함수 이름이 와야 해요. 예: def turn_around():")
 	var fname: String = nt["v"]
-	if _is_builtin_name(fname) or MODULES.has(fname):
+	if _is_builtin_name(fname) or _module_taken(fname):
 		return _bad("'%s' 는 이미 있는 이름이라 새 함수 이름으로 쓸 수 없어요." % fname)
 	if not _is_op(_next(), "("):
 		return _bad("함수 이름 뒤에 괄호를 붙여 주세요. 예: def %s():" % fname)
@@ -1160,7 +1196,7 @@ func _parse_class(ln: Dictionary, indent: int) -> Dictionary:
 	if nt["t"] != "name" or nt["v"] in KEYWORDS:
 		return _bad("class 뒤에는 이름이 와야 해요. 예: class Walker:")
 	var cname: String = nt["v"]
-	if _is_builtin_name(cname) or MODULES.has(cname):
+	if _is_builtin_name(cname) or _module_taken(cname):
 		return _bad("'%s' 는 이미 있는 이름이라 class 이름으로 쓸 수 없어요." % cname)
 	if _in_class or not _func_stack.is_empty():
 		return _bad("class 는 맨 바깥(들여쓰지 않은 곳)에서만 만들 수 있어요.")
@@ -1245,6 +1281,9 @@ func _parse_import() -> Dictionary:
 func _module_ok(t: Dictionary) -> bool:
 	if t["t"] != "name":
 		_bad("import 뒤에는 모듈 이름을 적어요. 예: import math")
+		return false
+	if BLOCKED_MODULES.has(t["v"]):
+		_bad("'%s' 는 %s이라 이 게임에서는 쓰지 않아요. (쓸 수 있는 모듈: %s)" % [t["v"], BLOCKED_MODULES[t["v"]], ", ".join(PackedStringArray(MODULES.keys()))])
 		return false
 	if not MODULES.has(t["v"]):
 		_bad("가져올 수 있는 모듈은 %s 이에요: '%s'" % [", ".join(PackedStringArray(MODULES.keys())), t["v"]])
@@ -1342,7 +1381,7 @@ func _check_target(e: Dictionary, op: String) -> bool:
 		match String(tt["type"]):
 			"name":
 				var name: String = tt["name"]
-				if _is_builtin_name(name) or MODULES.has(name):
+				if _is_builtin_name(name) or _module_taken(name):
 					_bad("'%s' 는 이미 있는 이름이라 변수 이름으로 쓸 수 없어요." % name)
 					return false
 				_note_assign(name)
@@ -2264,6 +2303,8 @@ func _store(target: Dictionary, v: Variant) -> void:
 	if _is_kind(obj, "tuple"):
 		_raise("튜플은 만든 뒤에 바꿀 수 없어요. 새 튜플을 만들어 주세요. 예: pos = (x, y)")
 		return
+	if _is_kind(obj, "deque"):
+		obj = obj["items"]
 	if not obj is Array:
 		_raise("[ ] 로 값을 바꿀 수 있는 건 목록과 딕셔너리예요.")
 		return
@@ -2366,7 +2407,7 @@ func _iter(v: Variant, where: String = "") -> Variant:
 		for ch in String(v):
 			chars.append(ch)
 		return chars
-	if _is_kind(v, "tuple"):
+	if _is_kind(v, "tuple") or _is_kind(v, "deque"):
 		return (v["items"] as Array).duplicate()
 	if _is_kind(v, "dict"):
 		return _dict_keys(v)
@@ -2854,7 +2895,9 @@ static func _py_type(v: Variant) -> String:
 			return "list"
 	var kind: String = v.get("kind", "") if v is Dictionary else ""
 	match kind:
-		"tuple", "dict", "set", "module", "iterator":
+		"dict":
+			return "Counter" if v.get("counter", false) else ("defaultdict" if v.has("factory") else "dict")
+		"tuple", "set", "module", "iterator", "deque":
 			return kind
 		"class":
 			return "type"
@@ -3047,10 +3090,18 @@ func _eval(e: Dictionary) -> Variant:
 				if not _err.is_empty():
 					return null
 				if not obj["data"].has(k):
+					if obj.get("counter", false):
+						return 0  # a Counter counts a missing key as 0
+					if obj.get("factory") != null:  # defaultdict makes the missing value
+						var made = await _call(obj["factory"], [])
+						if not _err.is_empty():
+							return null
+						obj["data"][k] = [idx, made]
+						return made
 					_raise("딕셔너리에 %s 키가 없어요. 없을 수도 있는 키는 .get(키, 기본값) 으로 꺼내요." % _repr(idx), "KeyError")
 					return null
 				return obj["data"][k][1]
-			if _is_kind(obj, "tuple"):
+			if _is_kind(obj, "tuple") or _is_kind(obj, "deque"):
 				obj = obj["items"]
 			if not (obj is Array or obj is String):
 				_raise("[ ] 는 목록, 튜플, 글자, 딕셔너리에만 쓸 수 있어요.")
@@ -3186,14 +3237,14 @@ func _call(fn: Variant, args: Array, kwargs: Dictionary = {}) -> Variant:
 		_raise("부를 수 있는 함수가 아니에요: %s" % _repr(fn))
 		return null
 	var kind := String(fn["kind"])
-	if not kwargs.is_empty() and not kind in ["builtin", "method", "func", "bound", "class"]:
+	if not kwargs.is_empty() and not kind in ["builtin", "method", "func", "bound", "class", "modfn"]:
 		_raise("이 함수에는 이름 붙은 값(%s=...)을 넣을 수 없어요." % kwargs.keys()[0])
 		return null
 	match kind:
 		"builtin":
 			return await _call_builtin(fn["name"], args, kwargs)
 		"modfn":
-			return _call_module(fn["mod"], fn["name"], args)
+			return await _call_module(fn["mod"], fn["name"], args, kwargs)
 		"method":
 			return await _call_method(fn["obj"], fn["name"], args, kwargs)
 		"func":
@@ -3254,7 +3305,7 @@ func _from_host(v: Variant) -> Variant:
 
 ## Language values -> plain values for the host: tuples become Arrays, dicts plain Dictionaries.
 func _to_host(v: Variant) -> Variant:
-	if _is_kind(v, "tuple"):
+	if _is_kind(v, "tuple") or _is_kind(v, "deque"):
 		return (v["items"] as Array).map(func(x: Variant) -> Variant: return _to_host(x))
 	if _is_kind(v, "set"):
 		return (v["data"] as Dictionary).values().map(func(x: Variant) -> Variant: return _to_host(x))
@@ -3417,6 +3468,8 @@ func _call_builtin(name: String, args: Array, kwargs: Dictionary = {}) -> Varian
 	if name in COMMANDS or name in CONDITIONS or name in SENSORS:
 		return await _robot_call(name, 0, args)
 	match name:
+		"_count_of":
+			return args[0]["items"][1]
 		"robots":
 			if not _need_args(name, args, 0):
 				return null
@@ -3782,43 +3835,482 @@ func _range(args: Array) -> Variant:
 	return out
 
 
-func _call_module(mod: String, name: String, args: Array) -> Variant:
+func _call_module(mod: String, name: String, args: Array, kwargs: Dictionary = {}) -> Variant:
 	var full := "%s.%s" % [mod, name]
-	match full:
-		"math.sqrt":
+	var allowed: Array = MODULE_KWARGS.get(full, [])
+	for kw in kwargs:
+		if not kw in allowed:
+			_raise("'%s()' 에는 '%s=' 을 쓸 수 없어요." % [full, kw])
+			return null
+	match mod:
+		"math":
+			return _call_math(full, name, args, kwargs)
+		"random":
+			return _call_random(full, name, args)
+		"collections":
+			return _call_collections(full, name, args, kwargs)
+		"statistics":
+			return await _call_statistics(full, name, args)
+		"itertools":
+			return await _call_itertools(full, name, args, kwargs)
+		"time":
 			if _need_args(full, args, 1) and _need_num(full, args[0]):
 				if _num(args[0]) < 0:
-					_raise("음수의 제곱근은 구할 수 없어요.")
+					_raise("time.sleep() 에는 0 이상의 수를 넣어요.", "ValueError")
 					return null
-				return sqrt(float(args[0]))
-		"math.floor":
-			if _need_args(full, args, 1) and _need_num(full, args[0]):
-				return floori(float(args[0]))
-		"math.ceil":
-			if _need_args(full, args, 1) and _need_num(full, args[0]):
-				return ceili(float(args[0]))
-		"math.pow":
-			if _need_args(full, args, 2) and _need_num(full, args[0]) and _need_num(full, args[1]):
-				return pow(float(args[0]), float(args[1]))
-		"random.randint":
-			if _need_args(full, args, 2) and _need_int(full, args[0]) and _need_int(full, args[1]):
-				if int(args[0]) > int(args[1]):
-					_raise("random.randint(a, b) 는 a 가 b 보다 작거나 같아야 해요.")
+				# The village has no clock: sleep() waits one turn, like wait() (horses take a step).
+				var message: String = await _host.run_command("wait", _line, 0, [])
+				if _host.is_stop_requested():
+					_stop()
+				elif message != "":
+					_raise(message, "RobotError")
+	return null
+
+
+func _call_math(full: String, name: String, args: Array, kwargs: Dictionary) -> Variant:
+	match name:
+		"gcd", "lcm":
+			var out := 0 if name == "gcd" else 1
+			for a in args:
+				if not _need_int(full, a):
 					return null
-				return _rng.randi_range(int(args[0]), int(args[1]))
-		"random.choice":
+				var v := absi(int(a))
+				if name == "gcd":
+					var x := out
+					var y := v
+					while y != 0:
+						var t := x % y
+						x = y
+						y = t
+					out = x
+				else:
+					if v == 0 or out == 0:
+						out = 0
+						continue
+					var g := out
+					var h := v
+					while h != 0:
+						var t := g % h
+						g = h
+						h = t
+					out = out / g * v
+			return out
+		"factorial", "isqrt":
+			if not (_need_args(full, args, 1) and _need_int(full, args[0])):
+				return null
+			var n := int(args[0])
+			if n < 0:
+				_raise("%s() 에는 0 이상의 정수를 넣어요." % full, "ValueError")
+				return null
+			if name == "isqrt":
+				var r := int(sqrt(float(n)))
+				while r * r > n:
+					r -= 1
+				while (r + 1) * (r + 1) <= n:
+					r += 1
+				return r
+			if n > 20:
+				_raise("math.factorial() 은 20 까지만 계산할 수 있어요 (이 게임의 수 범위).", "ValueError")
+				return null
+			var f := 1
+			for k in range(2, n + 1):
+				f *= k
+			return f
+		"comb", "perm":
+			if not (_need_args(full, args, 1 if name == "perm" else 2, 2) and _need_int(full, args[0])):
+				return null
+			var n := int(args[0])
+			var k := n if args.size() == 1 else int(args[1])
+			if args.size() == 2 and not _need_int(full, args[1]):
+				return null
+			if n < 0 or k < 0:
+				_raise("%s() 에는 0 이상의 정수를 넣어요." % full, "ValueError")
+				return null
+			if k > n:
+				return 0
+			if name == "comb":
+				k = mini(k, n - k)
+			var r := 1
+			for i in k:
+				r = r * (n - i)
+				if name == "comb":
+					r = r / (i + 1)
+			return r
+		"prod":
 			if not _need_args(full, args, 1):
 				return null
-			var seq = args[0]
-			if not (seq is Array or seq is String) or seq.is_empty():
-				_raise("random.choice() 에는 비어 있지 않은 목록을 넣어요.")
+			var items = _iter(args[0], "math.prod() 안")
+			if items == null:
 				return null
-			var size: int = seq.size() if seq is Array else String(seq).length()
-			return seq[_rng.randi_range(0, size - 1)]
-		"random.random":
+			var total = 1
+			for v in items:
+				total = _binop("*", total, v)
+				if not _err.is_empty():
+					return null
+			return total
+		"hypot", "dist":
+			var coords: Array = args
+			if name == "dist":
+				if not _need_args(full, args, 2):
+					return null
+				var p = _iter(args[0], "math.dist() 안")
+				var q = _iter(args[1], "math.dist() 안")
+				if p == null or q == null:
+					return null
+				if p.size() != q.size():
+					_raise("math.dist() 의 두 점은 좌표 수가 같아야 해요.", "ValueError")
+					return null
+				coords = []
+				for i in p.size():
+					if not (_need_num(full, p[i]) and _need_num(full, q[i])):
+						return null
+					coords.append(float(p[i]) - float(q[i]))
+			var sq := 0.0
+			for c in coords:
+				if not _need_num(full, c):
+					return null
+				sq += float(c) * float(c)
+			return sqrt(sq)
+		"isclose":
+			if not (_need_args(full, args, 2) and _need_num(full, args[0]) and _need_num(full, args[1])):
+				return null
+			var rel := float(kwargs.get("rel_tol", 1e-09))
+			var abs_tol := float(kwargs.get("abs_tol", 0.0))
+			var a := float(args[0])
+			var b := float(args[1])
+			return absf(a - b) <= maxf(rel * maxf(absf(a), absf(b)), abs_tol)
+		"atan2", "pow", "log":
+			var lo := 1 if name == "log" else 2
+			if not _need_args(full, args, lo, 2):
+				return null
+			for a in args:
+				if not _need_num(full, a):
+					return null
+			var x := float(args[0])
+			match name:
+				"atan2":
+					return atan2(x, float(args[1]))
+				"pow":
+					return pow(x, float(args[1]))
+			if x <= 0.0:
+				_raise("math.log() 에는 0보다 큰 수를 넣어요.", "ValueError")
+				return null
+			if args.size() == 1:
+				return log(x)
+			return _log_base(x, float(args[1]))
+	# one number in, one number out
+	if not (_need_args(full, args, 1) and _need_num(full, args[0])):
+		return null
+	var x := float(args[0])
+	match name:
+		"sqrt":
+			if x < 0.0:
+				_raise("음수의 제곱근은 구할 수 없어요.", "ValueError")
+				return null
+			return sqrt(x)
+		"floor":
+			return floori(x)
+		"ceil":
+			return ceili(x)
+		"trunc":
+			return int(x)
+		"fabs":
+			return absf(x)
+		"sin":
+			return sin(x)
+		"cos":
+			return cos(x)
+		"tan":
+			return tan(x)
+		"asin", "acos":
+			if x < -1.0 or x > 1.0:
+				_raise("%s() 에는 -1 부터 1 사이의 수를 넣어요." % full, "ValueError")
+				return null
+			return asin(x) if name == "asin" else acos(x)
+		"atan":
+			return atan(x)
+		"radians":
+			return deg_to_rad(x)
+		"degrees":
+			return rad_to_deg(x)
+		"exp":
+			return exp(x)
+		"log10", "log2":
+			if x <= 0.0:
+				_raise("%s() 에는 0보다 큰 수를 넣어요." % full, "ValueError")
+				return null
+			return _log_base(x, 10.0 if name == "log10" else 2.0)
+	return null
+
+
+## log of x in `base`, exact for whole powers (math.log10(1000) is 3.0, like Python).
+static func _log_base(x: float, base: float) -> float:
+	var r := log(x) / log(base)
+	var whole := roundf(r)
+	if absf(r - whole) < 1e-9 and pow(base, whole) == x:
+		return whole
+	return r
+
+
+func _call_random(full: String, name: String, args: Array) -> Variant:
+	match name:
+		"randint":
+			if _need_args(full, args, 2) and _need_int(full, args[0]) and _need_int(full, args[1]):
+				if int(args[0]) > int(args[1]):
+					_raise("random.randint(a, b) 는 a 가 b 보다 작거나 같아야 해요.", "ValueError")
+					return null
+				return _rng.randi_range(int(args[0]), int(args[1]))
+		"choice":
+			if not _need_args(full, args, 1):
+				return null
+			var seq = _iter(args[0], "random.choice() 안") if not args[0] is String else _iter(args[0])
+			if seq == null:
+				return null
+			if seq.is_empty():
+				_raise("random.choice() 에는 비어 있지 않은 목록을 넣어요.", "IndexError")
+				return null
+			return seq[_rng.randi_range(0, seq.size() - 1)]
+		"random":
 			if _need_args(full, args, 0):
 				return _rng.randf()
+		"uniform":
+			if _need_args(full, args, 2) and _need_num(full, args[0]) and _need_num(full, args[1]):
+				return float(args[0]) + (float(args[1]) - float(args[0])) * _rng.randf()
+		"randrange":
+			var options = _range(args)
+			if options == null:
+				return null
+			if options.is_empty():
+				_raise("random.randrange() 의 범위가 비어 있어요.", "ValueError")
+				return null
+			return options[_rng.randi_range(0, options.size() - 1)]
+		"shuffle":
+			if not _need_args(full, args, 1):
+				return null
+			if not args[0] is Array:
+				_raise("random.shuffle() 에는 목록을 넣어요 (지금: %s)." % _repr(args[0]))
+				return null
+			var items: Array = args[0]
+			for i in range(items.size() - 1, 0, -1):
+				var j := _rng.randi_range(0, i)
+				var t = items[i]
+				items[i] = items[j]
+				items[j] = t
+		"sample":
+			if not (_need_args(full, args, 2) and _need_int(full, args[1])):
+				return null
+			var pool = _iter(args[0], "random.sample() 안")
+			if pool == null:
+				return null
+			var k := int(args[1])
+			if k < 0 or k > pool.size():
+				_raise("random.sample() 로 %d개를 뽑을 수 없어요 (값은 %d개)." % [k, pool.size()], "ValueError")
+				return null
+			for i in k:
+				var j := _rng.randi_range(i, pool.size() - 1)
+				var t = pool[i]
+				pool[i] = pool[j]
+				pool[j] = t
+			return pool.slice(0, k)
+		"seed":
+			if not _need_args(full, args, 0, 1):
+				return null
+			_rng.seed = hash(args[0]) if not args.is_empty() and typeof(args[0]) != TYPE_INT else (int(args[0]) if not args.is_empty() else 0)
 	return null
+
+
+func _call_collections(full: String, name: String, args: Array, kwargs: Dictionary) -> Variant:
+	match name:
+		"Counter":
+			if not _need_args(full, args, 0, 1):
+				return null
+			var c := {"kind": "dict", "data": {}, "counter": true}
+			if not args.is_empty():
+				_counter_add(c, args[0], 1)
+			return null if not _err.is_empty() else c
+		"defaultdict":
+			if not _need_args(full, args, 0, 1):
+				return null
+			var factory = null if args.is_empty() else args[0]
+			if factory != null and not (factory is Dictionary and factory.has("kind")):
+				_raise("defaultdict() 에는 int, list 처럼 기본값을 만드는 함수를 넣어요 (지금: %s)." % _repr(factory))
+				return null
+			return {"kind": "dict", "data": {}, "factory": factory}
+		"deque":
+			if not _need_args(full, args, 0, 1):
+				return null
+			var maxlen = kwargs.get("maxlen")
+			if maxlen != null and not _need_int(full, maxlen):
+				return null
+			var items = [] if args.is_empty() else _iter(args[0], "deque() 안")
+			if items == null:
+				return null
+			var dq := {"kind": "deque", "items": items, "maxlen": maxlen}
+			_deque_trim(dq, true)
+			return dq
+	return null
+
+
+## Adds `sign` (1 or -1) for each value of `src` (or each count of a dict) to Counter `c`.
+func _counter_add(c: Dictionary, src: Variant, sign: int) -> void:
+	var data: Dictionary = c["data"]
+	if _is_kind(src, "dict"):
+		for pair in src["data"].values():
+			var k := _key(pair[0])
+			if not _err.is_empty():
+				return
+			if not _need_num("Counter", pair[1]):
+				return
+			data[k] = [pair[0], (data[k][1] if data.has(k) else 0) + sign * _num(pair[1])]
+		return
+	var items = _iter(src, "Counter() 안")
+	if items == null:
+		return
+	for v in items:
+		var k := _key(v)
+		if not _err.is_empty():
+			return
+		data[k] = [v, (data[k][1] if data.has(k) else 0) + sign]
+
+
+## Drops items beyond maxlen: from the left after appending on the right, and the other way round.
+static func _deque_trim(dq: Dictionary, from_left: bool) -> void:
+	if dq["maxlen"] == null:
+		return
+	var items: Array = dq["items"]
+	while items.size() > int(dq["maxlen"]):
+		if from_left:
+			items.pop_front()
+		else:
+			items.pop_back()
+
+
+func _call_statistics(full: String, name: String, args: Array) -> Variant:
+	if not _need_args(full, args, 1):
+		return null
+	var data = _iter(args[0], "%s() 안" % full)
+	if data == null:
+		return null
+	if data.is_empty():
+		_raise("%s() 에 넣은 값이 없어요." % full, "ValueError")
+		return null
+	match name:
+		"mode":
+			var counts := {}
+			var best = data[0]
+			var best_n := 0
+			for v in data:
+				var k := _key(v)
+				if not _err.is_empty():
+					return null
+				counts[k] = int(counts.get(k, 0)) + 1
+				if counts[k] > best_n:
+					best_n = counts[k]
+					best = v
+			return best
+	for v in data:
+		if not _need_num(full, v):
+			return null
+	if name == "mean":
+		var total = 0
+		var all_int := true
+		for v in data:
+			total = _binop("+", total, _num(v))
+			all_int = all_int and typeof(_num(v)) == TYPE_INT
+		if all_int and int(total) % data.size() == 0:
+			return int(total) / data.size()
+		return float(total) / data.size()
+	var sorted = await _sorted(data)
+	if sorted == null:
+		return null
+	var n: int = sorted.size()
+	if n % 2 == 1:
+		return sorted[floori(n / 2.0)]
+	return (float(sorted[n / 2 - 1]) + float(sorted[n / 2])) / 2.0
+
+
+## itertools results are iterators (iter()/next()/for/list() work), like Python.
+func _call_itertools(full: String, name: String, args: Array, kwargs: Dictionary) -> Variant:
+	var out: Array = []
+	match name:
+		"permutations", "combinations":
+			if not _need_args(full, args, 1 if name == "permutations" else 2, 2):
+				return null
+			var pool = _iter(args[0], "%s() 안" % full)
+			if pool == null:
+				return null
+			var r = kwargs.get("r", args[1] if args.size() == 2 else pool.size())
+			if not _need_int(full, r):
+				return null
+			if _count_choices(pool.size(), int(r), name == "permutations") > MAX_LIST:
+				_raise("경우의 수가 너무 많아요. 값을 줄여 보세요.")
+				return null
+			_choose(pool, int(r), name == "permutations", [], out)
+		"product":
+			var repeat := int(kwargs.get("repeat", 1))
+			var pools: Array = []
+			for a in args:
+				var p = _iter(a, "itertools.product() 안")
+				if p == null:
+					return null
+				pools.append(p)
+			var all_pools: Array = []
+			for i in repeat:
+				all_pools.append_array(pools)
+			var combos: Array = [[]]
+			for p in all_pools:
+				var next: Array = []
+				for c in combos:
+					for v in p:
+						next.append(c + [v])
+						if next.size() > MAX_LIST:
+							_raise("경우의 수가 너무 많아요. 값을 줄여 보세요.")
+							return null
+				combos = next
+			for c in combos:
+				out.append(_tuple(c))
+		"chain":
+			for a in args:
+				var p = _iter(a, "itertools.chain() 안")
+				if p == null:
+					return null
+				out.append_array(p)
+		"accumulate":
+			if not _need_args(full, args, 1):
+				return null
+			var p = _iter(args[0], "itertools.accumulate() 안")
+			if p == null:
+				return null
+			var total = null
+			for v in p:
+				total = v if total == null else _binop("+", total, v)
+				if not _err.is_empty():
+					return null
+				out.append(total)
+	return {"kind": "iterator", "items": out, "pos": 0}
+
+
+static func _count_choices(n: int, r: int, ordered: bool) -> int:
+	if r > n or r < 0:
+		return 0
+	var c := 1
+	for i in r:
+		c = c * (n - i) if ordered else c * (n - i) / (i + 1)
+		if c > MAX_LIST:
+			return c
+	return c
+
+
+## Every r-length arrangement (or selection) of `pool` positions, in Python's order.
+func _choose(pool: Array, r: int, ordered: bool, picked: Array, out: Array) -> void:
+	if picked.size() == r:
+		out.append(_tuple(picked.map(func(i: int) -> Variant: return pool[i])))
+		return
+	var start: int = 0 if ordered or picked.is_empty() else int(picked.back()) + 1
+	for i in range(start, pool.size()):
+		if ordered and i in picked:
+			continue
+		_choose(pool, r, ordered, picked + [i], out)
 
 
 ## name=value arguments each builtin accepts.
@@ -3830,6 +4322,11 @@ const LIST_METHODS: PackedStringArray = [
 ]
 const DICT_METHODS: PackedStringArray = ["get", "keys", "values", "items", "pop", "update", "setdefault", "copy", "clear"]
 const TUPLE_METHODS: PackedStringArray = ["index", "count"]
+const COUNTER_METHODS: PackedStringArray = ["most_common", "total", "elements", "update", "subtract"]
+const DEQUE_METHODS: PackedStringArray = [
+	"append", "appendleft", "pop", "popleft", "extend", "extendleft", "rotate", "clear", "count", "index",
+	"remove", "reverse", "copy", "insert",
+]
 const SET_METHODS: PackedStringArray = [
 	"add", "remove", "discard", "pop", "clear", "copy", "update", "union", "intersection", "difference",
 	"symmetric_difference", "issubset", "issuperset", "isdisjoint",
@@ -3846,11 +4343,56 @@ func _call_method(obj: Variant, name: String, args: Array, kwargs: Dictionary = 
 		_raise("'.%s()' 에는 이름 붙은 값을 넣을 수 없어요." % name)
 		return null
 	if _is_kind(obj, "dict"):
+		if obj.get("counter", false) and name in COUNTER_METHODS:
+			return await _call_counter_method(obj, name, args)
 		return _call_dict_method(obj, name, args)
 	if _is_kind(obj, "set"):
 		return _call_set_method(obj, name, args)
 	if obj is String:
 		return _call_str_method(obj, name, args, kwargs)
+	if _is_kind(obj, "deque"):
+		match name:
+			"appendleft":
+				if _need_args(name, args, 1):
+					(obj["items"] as Array).push_front(args[0])
+					_deque_trim(obj, false)
+				return null
+			"popleft":
+				if not _need_args(name, args, 0):
+					return null
+				if (obj["items"] as Array).is_empty():
+					_raise("빈 deque 에서는 popleft() 할 수 없어요.", "IndexError")
+					return null
+				return (obj["items"] as Array).pop_front()
+			"extendleft":
+				if not _need_args(name, args, 1):
+					return null
+				var more = _iter(args[0], "extendleft() 안")
+				if more == null:
+					return null
+				for v in more:
+					(obj["items"] as Array).push_front(v)
+				_deque_trim(obj, false)
+				return null
+			"rotate":
+				if not _need_args(name, args, 0, 1):
+					return null
+				if not args.is_empty() and not _need_int(name, args[0]):
+					return null
+				var dq: Array = obj["items"]
+				if dq.is_empty():
+					return null
+				var steps := posmod(1 if args.is_empty() else int(args[0]), dq.size())
+				dq.assign(dq.slice(dq.size() - steps) + dq.slice(0, dq.size() - steps))
+				return null
+			"copy":
+				if _need_args(name, args, 0):
+					return {"kind": "deque", "items": (obj["items"] as Array).duplicate(), "maxlen": obj["maxlen"]}
+				return null
+		var result = await _call_method(obj["items"], name, args, kwargs)
+		if name in ["append", "extend", "insert"]:
+			_deque_trim(obj, true)
+		return result
 	var items: Array = obj["items"] if _is_kind(obj, "tuple") else obj
 	match name:
 		"append":
@@ -3973,6 +4515,43 @@ func _call_set_method(st: Dictionary, name: String, args: Array) -> Variant:
 	return null
 
 
+## Counter's own methods (the dict methods work too).
+func _call_counter_method(c: Dictionary, name: String, args: Array) -> Variant:
+	var data: Dictionary = c["data"]
+	match name:
+		"most_common":
+			if not _need_args(name, args, 0, 1):
+				return null
+			if not args.is_empty() and args[0] != null and not _need_int(name, args[0]):
+				return null
+			var pairs: Array = data.values().map(func(p: Array) -> Variant: return _tuple([p[0], p[1]]))
+			var ranked = await _sorted(pairs, {"kind": "builtin", "name": "_count_of"}, true)
+			if ranked == null:
+				return null
+			return ranked if args.is_empty() or args[0] == null else ranked.slice(0, maxi(0, int(args[0])))
+		"total":
+			if not _need_args(name, args, 0):
+				return null
+			var t = 0
+			for p in data.values():
+				t = _binop("+", t, p[1])
+			return t
+		"elements":
+			if not _need_args(name, args, 0):
+				return null
+			var out: Array = []
+			for p in data.values():
+				for i in maxi(0, int(p[1])):
+					out.append(p[0])
+			return {"kind": "iterator", "items": out, "pos": 0}
+		"update", "subtract":
+			if not _need_args(name, args, 0, 1):
+				return null
+			if not args.is_empty():
+				_counter_add(c, args[0], 1 if name == "update" else -1)
+	return null
+
+
 func _call_dict_method(d: Dictionary, name: String, args: Array) -> Variant:
 	var data: Dictionary = d["data"]
 	match name:
@@ -4034,7 +4613,9 @@ func _call_dict_method(d: Dictionary, name: String, args: Array) -> Variant:
 			return value
 		"copy":
 			if _need_args(name, args, 0):
-				return {"kind": "dict", "data": data.duplicate()}
+				var copied := d.duplicate()  # keeps Counter / defaultdict
+				copied["data"] = data.duplicate()
+				return copied
 		"clear":
 			if _need_args(name, args, 0):
 				data.clear()
@@ -4270,8 +4851,8 @@ func _attr(obj: Variant, name: String) -> Variant:
 		if not name in MODULES[mod]:
 			_raise("%s 에는 '%s' 가 없어요. (있는 것: %s)" % [mod, name, ", ".join(PackedStringArray(MODULES[mod]))])
 			return null
-		if full_name(mod, name) == "math.pi":
-			return PI
+		if MODULE_CONSTS.has(full_name(mod, name)):
+			return MODULE_CONSTS[full_name(mod, name)]
 		return {"kind": "modfn", "mod": mod, "name": name}
 	var methods: PackedStringArray = []
 	if obj is Array:
@@ -4280,6 +4861,10 @@ func _attr(obj: Variant, name: String) -> Variant:
 		methods = STR_METHODS
 	elif kind == "dict":
 		methods = DICT_METHODS
+		if obj.get("counter", false):
+			methods = DICT_METHODS + COUNTER_METHODS
+	elif kind == "deque":
+		methods = DEQUE_METHODS
 	elif kind == "tuple":
 		methods = TUPLE_METHODS
 	elif kind == "set":
@@ -4326,7 +4911,7 @@ static func _truthy(v: Variant) -> bool:
 			return not String(v).is_empty()
 		TYPE_ARRAY:
 			return not (v as Array).is_empty()
-	if _is_kind(v, "tuple"):
+	if _is_kind(v, "tuple") or _is_kind(v, "deque"):
 		return not (v["items"] as Array).is_empty()
 	if _is_kind(v, "dict") or _is_kind(v, "set"):
 		return not (v["data"] as Dictionary).is_empty()
@@ -4353,6 +4938,13 @@ static func _round_half_even(x: float) -> int:
 func _binop(op: String, a: Variant, b: Variant) -> Variant:
 	if op == "%" and a is String:
 		return _percent_format(a, b)
+	if (op == "+" or op == "-") and _is_kind(a, "dict") and a.get("counter", false) and _is_kind(b, "dict"):
+		var c := {"kind": "dict", "data": (a["data"] as Dictionary).duplicate(), "counter": true}
+		_counter_add(c, b, 1 if op == "+" else -1)
+		for k in (c["data"] as Dictionary).keys():
+			if c["data"][k][1] <= 0:
+				c["data"].erase(k)  # like Python, only positive counts stay
+		return c
 	if op == "|" and _is_kind(a, "dict") and _is_kind(b, "dict"):
 		var merged := {"kind": "dict", "data": (a["data"] as Dictionary).duplicate()}
 		(merged["data"] as Dictionary).merge(b["data"], true)
@@ -4473,7 +5065,7 @@ static func _eq(a: Variant, b: Variant) -> bool:
 				return a["name"] == b["name"]
 			"modfn":
 				return a["mod"] == b["mod"] and a["name"] == b["name"]
-			"tuple":
+			"tuple", "deque":
 				return _eq(a["items"], b["items"])
 			"set":
 				var sa: Dictionary = a["data"]
@@ -4520,7 +5112,7 @@ func _compare(op: String, a: Variant, b: Variant) -> bool:
 				found = _err.is_empty() and b["data"].has(k)
 			elif b is String and a is String:
 				found = String(b).contains(a)
-			elif b is Array or _is_kind(b, "tuple"):
+			elif b is Array or _is_kind(b, "tuple") or _is_kind(b, "deque"):
 				for item in (b if b is Array else b["items"]):
 					if _eq(a, item):
 						found = true
@@ -4611,12 +5203,52 @@ static func _type_name(v: Variant) -> String:
 		return "딕셔너리"
 	if _is_kind(v, "set"):
 		return "집합"
+	if _is_kind(v, "deque"):
+		return "deque"
 	return "객체"
 
 
 ## Text that print() shows: strings as-is, everything else like Python's repr.
 static func _str(v: Variant) -> String:
 	return String(v) if v is String else _repr(v)
+
+
+## A float the way Python prints it: the shortest digits that read back as the same number,
+## in fixed notation from 1e-4 up to 1e16 and scientific outside (0.30000000000000004, 1e-05, 1e+16).
+static func _float_repr(f: float) -> String:
+	if is_nan(f):
+		return "nan"
+	if is_inf(f):
+		return "inf" if f > 0 else "-inf"
+	var text := var_to_str(f)  # shortest round-trip digits, e.g. "1e-05" or "0.1"
+	var sign := ""
+	if text.begins_with("-"):
+		sign = "-"
+		text = text.substr(1)
+	var exp10 := 0
+	var at := text.find("e")
+	if at >= 0:
+		exp10 = text.substr(at + 1).to_int()
+		text = text.left(at)
+	var dot := text.find(".")
+	var whole := text if dot < 0 else text.left(dot)
+	var digits := whole + ("" if dot < 0 else text.substr(dot + 1))
+	var point := whole.length() + exp10  # value = 0.<digits> * 10^point
+	while digits.begins_with("0"):
+		digits = digits.substr(1)
+		point -= 1
+	digits = digits.rstrip("0")
+	if digits.is_empty():
+		return sign + "0.0"
+	var e := point - 1
+	if e < -4 or e >= 16:
+		var mant := digits.left(1) + ("." + digits.substr(1) if digits.length() > 1 else "")
+		return sign + mant + "e" + ("-" if e < 0 else "+") + ("%02d" % absi(e))
+	if point <= 0:
+		return sign + "0." + "0".repeat(-point) + digits
+	if point >= digits.length():
+		return sign + digits + "0".repeat(point - digits.length()) + ".0"
+	return sign + digits.left(point) + "." + digits.substr(point)
 
 
 static func _repr(v: Variant) -> String:
@@ -4628,10 +5260,7 @@ static func _repr(v: Variant) -> String:
 		TYPE_INT:
 			return str(v)
 		TYPE_FLOAT:
-			var f: float = v
-			if is_finite(f) and f == floorf(f) and absf(f) < 1e15:
-				return "%d.0" % int(f)
-			return str(f)
+			return _float_repr(v)
 		TYPE_STRING:
 			return "'%s'" % v
 		TYPE_ARRAY:
@@ -4679,8 +5308,27 @@ static func _repr(v: Variant) -> String:
 						return "set()"
 					return "{" + ", ".join(PackedStringArray(v["data"].values().map(func(x: Variant) -> String: return _repr(x)))) + "}"
 				"dict":
+					var pairs: Array = v["data"].values()
+					if v.get("counter", false):
+						pairs = pairs.duplicate()
+						# most common first; equal counts keep their order (a stable sort)
+						for i in range(1, pairs.size()):
+							var cur: Array = pairs[i]
+							var j := i - 1
+							while j >= 0 and _num(pairs[j][1]) < _num(cur[1]):
+								pairs[j + 1] = pairs[j]
+								j -= 1
+							pairs[j + 1] = cur
 					var parts: PackedStringArray = []
-					for pair in v["data"].values():
+					for pair in pairs:
 						parts.append("%s: %s" % [_repr(pair[0]), _repr(pair[1])])
-					return "{" + ", ".join(parts) + "}"
+					var body := "{" + ", ".join(parts) + "}"
+					if v.get("counter", false):
+						return "Counter()" if parts.is_empty() else "Counter(%s)" % body
+					if v.has("factory"):
+						return "defaultdict(%s, %s)" % [_repr(v["factory"]), body]
+					return body
+				"deque":
+					var inner := "deque(%s" % _repr(v["items"])
+					return inner + (")" if v["maxlen"] == null else ", maxlen=%d)" % int(v["maxlen"]))
 	return str(v)
