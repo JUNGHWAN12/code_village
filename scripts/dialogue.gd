@@ -6,6 +6,8 @@ extends RefCounted
 ## "hints" (shown one per press of the hint button, before the level's own "hint"),
 ## "success" (said when the level is cleared). Failure lines come from the speaker's
 ## style in FAIL, with {left} (apples left) and {line} (line number) filled in.
+## "star_hints" (optional): {"lines" / "steps" / "ops": text} said about a missed star on this level,
+## instead of the speaker's general line in STAR.
 ## Use [code]...[/code] for code; SpeechBubble.format() colors it.
 
 ## look: outfit parts of the villager FBX (see Villager.setup). style: key into FAIL.
@@ -421,6 +423,42 @@ const LEVELS: Array[Dictionary] = [
 		"success": "한 걸음도 낭비하지 않았군. 최고의 탐험가일세!",
 	},
 ]
+
+
+## What a speaker says about a star the player missed, per speech style (see Levels.star_goals).
+## lines: more code lines than the target. steps: more robot commands. ops: more statements executed.
+## The lines must fit every level: no hint at a feature the level may not have taught yet.
+const STAR: Dictionary = {
+	"granny": {
+		"lines": "별 하나는 코드 길이란다. 없어도 되는 줄이나, 하나로 묶을 수 있는 줄을 찾아보렴.",
+		"steps": "별 하나는 로봇의 걸음이란다. 헛걸음이나 괜히 돈 곳이 없는지 살펴보렴.",
+		"ops": "별 하나는 컴퓨터가 일한 횟수란다. 같은 것을 두 번 세지 말고 지나가면서 한 번에 세어 보렴.",
+	},
+	"polite": {
+		"lines": "별 하나는 코드 길이예요. 없어도 되는 줄이나, 하나로 묶을 수 있는 줄을 찾아볼까요?",
+		"steps": "별 하나는 로봇이 움직인 횟수예요. 더 짧은 길이나 필요 없는 회전을 찾아볼까요?",
+		"ops": "별 하나는 컴퓨터가 일한 횟수예요. 같은 것을 두 번 세거나 다시 훑지 않게 해 볼까요?",
+	},
+	"gruff": {
+		"lines": "코드가 길군. 없어도 되는 줄을 빼거나 하나로 묶어 보게.",
+		"steps": "로봇이 헛걸음을 했군. 더 짧은 길을 찾아보게.",
+		"ops": "같은 일을 두 번 시켰군. 지나가면서 한 번에 끝내게.",
+	},
+	"chief": {
+		"lines": "코드가 목표보다 기오. 없어도 되는 줄을 빼거나 하나로 묶어 보시오.",
+		"steps": "로봇의 걸음이 목표보다 많았소. 더 짧은 길을 찾아보시오.",
+		"ops": "컴퓨터가 같은 일을 거듭했소. 지나가면서 한 번에 끝내 보시오.",
+	},
+}
+
+
+## The speaker's line about a missed star. kind: "lines", "steps" or "ops" (a goal kind).
+static func star_hint(index: int, kind: String) -> String:
+	var own: Dictionary = for_level(index).get("star_hints", {})
+	if own.has(kind):
+		return String(own[kind])
+	var lines: Dictionary = STAR.get(speaker(index).get("style", "polite"), STAR["polite"])
+	return String(lines.get(kind, ""))
 
 
 static func for_level(index: int) -> Dictionary:

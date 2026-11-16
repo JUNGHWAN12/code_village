@@ -481,6 +481,13 @@ except Oops:
 	for style in Dialogue.FAIL:
 		for kind in ["apples", "goal", "error", "other", "order", "report", "rule", "speech"]:
 			_expect(Dialogue.FAIL[style].has(kind), "fail style %s has %s" % [style, kind])
+	for style in Dialogue.FAIL:
+		for kind in ["lines", "steps", "ops"]:
+			_expect(String(Dialogue.STAR.get(style, {}).get(kind, "")) != "", "star hint style %s has %s" % [style, kind])
+	for i in Levels.ALL.size():
+		for goal in Levels.star_goals(Levels.ALL[i]):
+			if goal["kind"] != "clear":
+				_expect(Dialogue.star_hint(i, goal["kind"]) != "", "level %d has a hint for its %s star" % [i + 1, goal["kind"]])
 	_expect(SpeechBubble.format("a [code]s[0][/code] b") == "a [color=#2f6db5][code]s[lb]0][/code][/color] b", "bubble formats code and escapes [")
 	var holder := Node3D.new()
 	get_root().add_child(holder)
