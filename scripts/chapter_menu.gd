@@ -77,8 +77,9 @@ func _ready() -> void:
 
 
 ## stars[i]: star mask of level i (bit per Levels.star_goals entry, 0 = not cleared).
-## unlocked: Callable(i) -> bool.
-func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int) -> void:
+## unlocked: Callable(i) -> bool. ref_steps: Callable(level index, map index) -> int, the commands the
+## reference solution needs (asked only for a level the pointer is on).
+func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int, ref_steps: Callable = Callable()) -> void:
 	for child in _grid.get_children():
 		child.queue_free()
 	var total := 0
@@ -87,7 +88,7 @@ func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int) -> v
 	_summary.text = "★ %d / %d" % [total, stars.size() * 3]
 	_unlock_box.set_pressed_no_signal(unlock_all)
 	for c in Levels.CHAPTERS.size():
-		_grid.add_child(_card(c, stars, unlocked, current))
+		_grid.add_child(_card(c, stars, unlocked, current, ref_steps))
 	show()
 
 
@@ -96,7 +97,7 @@ func close() -> void:
 	closed.emit()
 
 
-func _card(c: int, stars: Array, unlocked: Callable, current: int) -> Control:
+func _card(c: int, stars: Array, unlocked: Callable, current: int, ref_steps: Callable) -> Control:
 	var chapter: Dictionary = Levels.CHAPTERS[c]
 	var levels: Array = chapter["levels"]
 	var open_card: bool = unlocked.call(levels[0])
@@ -149,10 +150,11 @@ func _card(c: int, stars: Array, unlocked: Callable, current: int) -> Control:
 		btn.disabled = not is_open
 		btn.tooltip_text = Levels.title(i)
 		if is_open:
-			# The commands target needs a run of the solution, so the menu names that star without a number.
-			var goals := Levels.star_goals(Levels.ALL[i])
-			for g in goals.size():
-				btn.tooltip_text += "\n%s %s" % ["★" if s & (1 << g) else "☆", Levels.star_text(goals[g])]
+			# The commands target needs a run of the solution: work it out when the pointer gets here.
+			btn.tooltip_text = star_tip(i, s)
+			if ref_steps.is_valid():
+				btn.mouse_entered.connect(func() -> void:
+					btn.tooltip_text = star_tip(i, s, int(ref_steps.call(i, 0))), CONNECT_ONE_SHOT)
 		if i == current:
 			btn.add_theme_color_override("font_color", GOLD)
 		btn.pressed.connect(func() -> void:
@@ -160,6 +162,15 @@ func _card(c: int, stars: Array, unlocked: Callable, current: int) -> Control:
 			level_chosen.emit(i))
 		row.add_child(btn)
 	return panel
+
+
+## Tooltip of a level button: its title, then one line per star with its target (on the main map).
+static func star_tip(i: int, mask: int, ref_steps: int = -1) -> String:
+	var text := Levels.title(i)
+	var goals := Levels.star_goals(Levels.ALL[i], 0, ref_steps)
+	for g in goals.size():
+		text += "\n%s %s" % ["★" if mask & (1 << g) else "☆", Levels.star_text(goals[g])]
+	return text
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
