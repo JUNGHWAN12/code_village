@@ -20,6 +20,21 @@ static func run_on_map(level: Dictionary, map_index: int, program: Array, rng_se
 	return {"result": result, "world": w}
 
 
+## Robot commands the reference solution needs on a map, or -1 when that is not scored (levels with
+## "seeds": the count depends on the dice) or the solution fails. Runs synchronously.
+static func reference_steps(level: Dictionary, map_index: int) -> int:
+	if level.has("seeds"):
+		return -1
+	var parsed := CodeInterpreter.new().parse(level["solution"])
+	if not parsed["ok"]:
+		return -1
+	var w := GridWorld.new()
+	w.load_level(Levels.for_map(level, map_index))
+	var host := WorldHost.new(w)
+	CodeInterpreter.new().run(parsed["program"], host, 1)  # no real await inside: finishes now
+	return host.commands if w.is_solved() else -1
+
+
 ## The maps of a level (main first) crossed with its seeds: [{"map": int, "seed": int}].
 ## Every pair must be solved; levels without "seeds" use only seed 1.
 static func checks(level: Dictionary) -> Array:

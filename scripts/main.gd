@@ -446,7 +446,7 @@ func _refresh_level_select() -> void:
 		if not _unlocked(i):
 			label = "🔒 " + label
 		elif stars > 0:
-			label += "  " + "★".repeat(stars)
+			label += "  " + Levels.star_marks(_star_mask(i))
 		_level_select.add_item(label, i)
 		_level_select.set_item_disabled(_level_select.get_item_index(i), not _unlocked(i))
 	_select_current()
@@ -455,6 +455,12 @@ func _refresh_level_select() -> void:
 
 func _stars(i: int) -> int:
 	return int(_progress.get_value("stars", str(i), 0))
+
+
+## Which stars of level i are earned (bit per Levels.star_goals entry). Saves from before the stars
+## were tracked one by one only have a count: those show as the first `count` stars.
+func _star_mask(i: int) -> int:
+	return int(_progress.get_value("star_mask", str(i), (1 << _stars(i)) - 1))
 
 
 func _unlock_all() -> bool:
@@ -483,10 +489,10 @@ func _update_nav() -> void:
 func _open_menu() -> void:
 	if _running:
 		return
-	var stars: Array = []
+	var masks: Array = []
 	for i in Levels.ALL.size():
-		stars.append(_stars(i))
-	_menu.open(stars, _unlocked, _unlock_all(), _level_index)
+		masks.append(_star_mask(i))
+	_menu.open(masks, _unlocked, _unlock_all(), _level_index)
 
 
 ## Test commands: type one alone in the code editor and press ▶ 실행. "#unlock" opens every level,
@@ -832,28 +838,22 @@ func _evaluate_finish(program: Array) -> void:
 		var lines := CodeInterpreter.count_code_lines(_code.text)
 		var par := int(Levels.ALL[_level_index]["par"])
 		var steps := _run_commands
-		var ref := _reference_steps(_level_index, _map_index)
-		# One star off for each: more lines than par, many more lines, more commands than needed.
-		var stars := 3
-		if lines > par:
-			stars -= 1
-		if lines > par + 3:
-			stars -= 1
-		if ref >= 0 and steps > ref:
-			stars -= 1
-		stars = maxi(1, stars)
-		if ref >= 0:
-			_log("성공! 코드 %d줄 (목표 %d줄) · 명령 %d번 (목표 %d번)" % [lines, par, steps, ref], "#9dff8a")
+		var goals := _star_goals()
+		# One star per goal met (Levels.star_goals); stars earned in earlier runs are kept.
+		var mask := Levels.star_mask(goals, lines, steps)
+		if String(goals[2]["kind"]) == "steps":
+			_log("성공! 코드 %d줄 (목표 %d줄) · 명령 %d번 (목표 %d번)" % [lines, par, steps, int(goals[2]["max"])], "#9dff8a")
 		else:
 			_log("성공! 코드 %d줄 (목표 %d줄)" % [lines, par], "#9dff8a")
 		_sfx.play("success")
-		var best := int(_progress.get_value("stars", str(_level_index), 0))
-		_progress.set_value("stars", str(_level_index), maxi(best, stars))
+		var kept := _star_mask(_level_index) | mask
+		_progress.set_value("star_mask", str(_level_index), kept)
+		_progress.set_value("stars", str(_level_index), maxi(_stars(_level_index), Levels.star_count(kept)))
 		_save_progress()
 		_refresh_level_select()
 		_npc_say([Dialogue.for_level(_level_index).get("success", "")], Villager.Mood.HAPPY)
 		await _robot.celebrate()
-		_show_result(stars, lines, par, steps, ref)
+		_show_result(goals, mask, kept, lines, steps)
 	else:
 		var f := _world.failure()
 		_log(_failure_text(_world, f), "#ffb35c")
@@ -863,22 +863,17 @@ func _evaluate_finish(program: Array) -> void:
 
 
 ## Robot commands the reference solution needs on this map (cached), or -1 for levels whose
-## result depends on random seeds. Runs synchronously on a WorldHost.
+## result depends on random seeds.
 func _reference_steps(level_index: int, map_index: int) -> int:
 	var key := "%d:%d" % [level_index, map_index]
-	if _ref_steps.has(key):
-		return _ref_steps[key]
-	var level: Dictionary = Levels.ALL[level_index]
-	var steps := -1
-	if not level.has("seeds"):
-		var parsed := CodeInterpreter.new().parse(level["solution"])
-		var w := GridWorld.new()
-		w.load_level(Levels.for_map(level, map_index))
-		var host := WorldHost.new(w)
-		CodeInterpreter.new().run(parsed["program"], host, 1)  # no real await inside: finishes now
-		steps = host.commands if w.is_solved() else -1
-	_ref_steps[key] = steps
-	return steps
+	if not _ref_steps.has(key):
+		_ref_steps[key] = WorldHost.reference_steps(Levels.ALL[level_index], map_index)
+	return _ref_steps[key]
+
+
+## The three stars of the current level on the map being shown.
+func _star_goals() -> Array[Dictionary]:
+	return Levels.star_goals(Levels.ALL[_level_index], _map_index, _reference_steps(_level_index, _map_index))
 
 
 ## Console text for GridWorld.failure().
@@ -1342,18 +1337,31 @@ func _on_continue_pressed() -> void:
 		_reset_board()
 
 
-func _show_result(stars: int, lines: int, par: int, steps: int = 0, ref: int = -1) -> void:
+## `mask`: the stars this run earned, `kept`: those plus the ones from earlier runs.
+func _show_result(goals: Array[Dictionary], mask: int, kept: int, lines: int, steps: int) -> void:
 	var last := Levels.next_of(_level_index) < 0
 	%ResultTitle.text = "모든 레벨 완료!" if last else "레벨 클리어!"
-	%ResultStars.text = "★".repeat(stars) + "☆".repeat(3 - stars)
-	var body := "코드 %d줄 · 목표 %d줄 이하" % [lines, par]
-	if ref >= 0:
-		body += "\n명령 %d번 · 목표 %d번 이하" % [steps, ref]
-	if lines > par:
-		body += "\n줄 수를 줄이면 별이 늘어요. 반복이나 함수를 써 보세요."
-	if ref >= 0 and steps > ref:
-		body += "\n더 짧은 길로 가거나 쓸데없는 회전을 줄여 보세요."
-	%ResultBody.text = body
+	%ResultStars.text = Levels.star_marks(mask)
+	var rows: PackedStringArray = []
+	var missed := {}
+	for i in goals.size():
+		var kind := String(goals[i]["kind"])
+		var got := (mask & (1 << i)) != 0
+		var row := ("★ " if got else "☆ ") + Levels.star_text(goals[i])
+		if kind == "lines":
+			row += "  (지금 %d줄)" % lines
+		elif kind == "steps":
+			row += "  (지금 %d번)" % steps
+		rows.append(row)
+		if not got:
+			missed[kind] = true
+	if missed.has("lines"):
+		rows.append("줄 수를 줄이면 별이 늘어요. 반복이나 함수를 써 보세요.")
+	if missed.has("steps"):
+		rows.append("더 짧은 길로 가거나 쓸데없는 회전을 줄여 보세요.")
+	if kept != mask:
+		rows.append("지금까지 모은 별 " + Levels.star_marks(kept))
+	%ResultBody.text = "\n".join(rows)
 	%ContinueButton.text = "닫기" if last else "다음 레벨 ▶"
 	_result.show()
 
@@ -1447,9 +1455,9 @@ func _update_hud() -> void:
 		var what := "사과" if _world.item_kinds() == ["apple"] else "물건"
 		parts.append("%s %d/%d" % [what, _world.collected, _world.apple_total])
 	parts.append("코드 %d/%d줄" % [lines, par])
-	var ref := _reference_steps(_level_index, _map_index)
-	if ref >= 0:
-		parts.append("명령 %d/%d번" % [_run_commands, ref])
+	for goal in _star_goals():
+		if String(goal["kind"]) == "steps" and int(goal["max"]) >= 0:
+			parts.append("명령 %d/%d번" % [_run_commands, int(goal["max"])])
 	_hud.text = "   ·   ".join(parts)
 
 
