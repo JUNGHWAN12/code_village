@@ -78,6 +78,8 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
   walk never changes; targets are the solution's count plus about a quarter. The save keeps a bit mask per level (`star_mask`, stars from different runs add up)
   next to the count in `stars` (unlocking reads the count). The result card, level list and chapter menu show which
   star is which (`Levels.star_marks`, `star_text`). Tests check that every solution earns all three on every map.
+- Robot colors (`Levels.SKINS`) open with total stars and are picked at the foot of the chapter screen (`meta/robot_skin`
+  in the save). Only a lone robot wears the skin: with several robots the colors are their names (`ROBOT_NAMES`).
 - Code completion (`_on_completion_requested`), villager click = next hint, failed hidden check re-runs itself.
 - Sounds: `scripts/sfx.gd` plays `audio/sfx/*.wav`, synthesized for this project (no third-party audio).
 - Sky: `shaders/sky_slavica.tres` (EmacEArt sky shader); grass tufts use `shaders/EA_GrassWind.gdshader`

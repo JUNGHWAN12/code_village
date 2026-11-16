@@ -1184,6 +1184,30 @@ static func star_marks(mask: int) -> String:
 	return text
 
 
+## Robot body colors the player earns with stars. "stars": total stars needed; -1 means every star
+## of every level. Skin 0 is the starting color (main.ROBOT_COLORS[0]). Only shown on levels with
+## one robot: with several, the colors are the robots' names (CodeInterpreter.ROBOT_NAMES).
+const SKINS: Array[Dictionary] = [
+	{"name": "주황", "color": Color(0.78, 0.5, 0.27), "stars": 0},
+	{"name": "하늘", "color": Color(0.36, 0.68, 0.9), "stars": 15},
+	{"name": "풀빛", "color": Color(0.42, 0.74, 0.38), "stars": 30},
+	{"name": "분홍", "color": Color(0.92, 0.55, 0.68), "stars": 50},
+	{"name": "보라", "color": Color(0.62, 0.45, 0.82), "stars": 75},
+	{"name": "하양", "color": Color(0.9, 0.9, 0.86), "stars": 100},
+	{"name": "황금", "color": Color(0.98, 0.8, 0.25), "stars": -1},
+]
+
+
+## Total stars skin `i` needs.
+static func skin_stars(i: int) -> int:
+	var need := int(SKINS[i]["stars"])
+	return ALL.size() * 3 if need < 0 else need
+
+
+static func skin_unlocked(i: int, total_stars: int) -> bool:
+	return i >= 0 and i < SKINS.size() and total_stars >= skin_stars(i)
+
+
 ## What a goal asks for, e.g. "코드 5줄 이하".
 static func star_text(goal: Dictionary) -> String:
 	match String(goal["kind"]):

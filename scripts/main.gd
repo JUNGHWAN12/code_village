@@ -27,7 +27,8 @@ const VILLAGER_FRAME_MARGIN: float = 6.0
 const INTRO_DISTANCE: float = 7.5
 const INTRO_PITCH: float = -0.3
 const INTRO_LINE_SECONDS: float = 2.4
-## Body colors for robots() order; names are CodeInterpreter.ROBOT_NAMES.
+## Body colors for robots() order; names are CodeInterpreter.ROBOT_NAMES. A lone robot wears the
+## player's skin instead (Levels.SKINS, earned with stars).
 const ROBOT_COLORS: Array[Color] = [
 	Color(0.78, 0.5, 0.27), Color(0.3, 0.52, 0.85), Color(0.35, 0.7, 0.35), Color(0.62, 0.42, 0.8),
 ]
@@ -350,6 +351,7 @@ func _ready() -> void:
 	add_child(_menu)  # above everything else
 	_menu.level_chosen.connect(_change_level)
 	_menu.unlock_all_toggled.connect(_on_unlock_all_toggled)
+	_menu.skin_chosen.connect(_on_skin_chosen)
 	_refresh_level_select()
 	var start_level := clampi(int(_progress.get_value("meta", "last_level", 0)), 0, Levels.ALL.size() - 1)
 	while Levels.prev_of(start_level) >= 0 and not _unlocked(start_level):
@@ -465,6 +467,30 @@ func _star_mask(i: int) -> int:
 	return int(_progress.get_value("star_mask", str(i), (1 << _stars(i)) - 1))
 
 
+func _total_stars() -> int:
+	var total := 0
+	for i in Levels.ALL.size():
+		total += Levels.star_count(_star_mask(i))
+	return total
+
+
+## The robot color in use: the saved choice, or the first one if it is not (or no longer) earned.
+func _skin() -> int:
+	var chosen := int(_progress.get_value("meta", "robot_skin", 0))
+	return chosen if Levels.skin_unlocked(chosen, _total_stars()) else 0
+
+
+func _on_skin_chosen(index: int) -> void:
+	if not Levels.skin_unlocked(index, _total_stars()):
+		return
+	_progress.set_value("meta", "robot_skin", index)
+	_save_progress()
+	_sfx.play("pick")
+	if _robots.size() == 1:
+		_robot.set_body_color(Levels.SKINS[index]["color"])
+	_open_menu()
+
+
 func _unlock_all() -> bool:
 	return bool(_progress.get_value("meta", "unlock_all", false))
 
@@ -494,7 +520,7 @@ func _open_menu() -> void:
 	var masks: Array = []
 	for i in Levels.ALL.size():
 		masks.append(_star_mask(i))
-	_menu.open(masks, _unlocked, _unlock_all(), _level_index, _reference_steps)
+	_menu.open(masks, _unlocked, _unlock_all(), _level_index, _reference_steps, _skin())
 
 
 ## Test commands: type one alone in the code editor and press ▶ 실행. "#unlock" opens every level,
@@ -693,7 +719,8 @@ func _place_robots() -> void:
 	while _robots.size() > _world.robot_count():
 		_robots.pop_back().queue_free()
 	for i in _robots.size():
-		_robots[i].set_body_color(ROBOT_COLORS[i % ROBOT_COLORS.size()])
+		var solo: bool = _robots.size() == 1
+		_robots[i].set_body_color(Levels.SKINS[_skin()]["color"] if solo else ROBOT_COLORS[i % ROBOT_COLORS.size()])
 		var tag := CodeInterpreter.ROBOT_NAMES[i % CodeInterpreter.ROBOT_NAMES.size()] if _robots.size() > 1 else ""
 		_robots[i].set_label(tag, ROBOT_COLORS[i % ROBOT_COLORS.size()])
 		_robots[i].place(_board.surface(_world.robots[i]), _world.dirs[i])
