@@ -56,7 +56,8 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
 
 ## Villagers (quest givers)
 - `scripts/dialogue.gd`: `CAST` (name, speech style, outfit) and `LEVELS[i]` (intro, hints, success) for `Levels.ALL[i]`;
-  failure lines come from the speaker's style in `FAIL`. Tests check one entry per level and that outfit parts exist.
+  failure lines come from the speaker's style in `FAIL`, lines about a missed star from `STAR` (`Dialogue.star_hint`;
+  a level can set its own in `star_hints`). They show on the result card and the villager says them after "다시 하기". Tests check one entry per level and that outfit parts exist.
 - `scripts/villager.gd`: the villager FBX has a skeleton but no animations; pose is set from code (arms down from
   the T-pose, idle sway, talk/happy/sad). Bone axes are measured at setup; bone positions are computed from local
   poses because `Skeleton3D.get_bone_global_pose` is stale before the first frame. The FBX skeleton is z-up.

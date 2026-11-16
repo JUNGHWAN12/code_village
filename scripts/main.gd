@@ -290,6 +290,7 @@ var _fast_host: WorldHost  # applies commands to _world without animation in fas
 var _fast_count: int = 0
 var _replay_pending: bool = false  # re-run on the map/seed where the hidden check failed
 var _run_commands: int = 0  # robot commands executed in the current run
+var _star_hints: Array = []  # the villager's lines about the stars the last clear missed
 var _run_ops: int = 0  # CodeInterpreter.steps() of the current run, as of the last robot command
 var _ref_steps: Dictionary = {}  # "level:map" -> commands the reference solution needs (-1: not scored)
 var _menu: ChapterMenu
@@ -1334,6 +1335,9 @@ func _on_speed_changed(value: float) -> void:
 func _on_retry_pressed() -> void:
 	_result.hide()
 	_reset_board()
+	if not _star_hints.is_empty():
+		_npc_say(_star_hints)
+		_star_hints = []
 
 
 func _on_continue_pressed() -> void:
@@ -1364,12 +1368,13 @@ func _show_result(goals: Array[Dictionary], mask: int, kept: int, lines: int, st
 		rows.append(row)
 		if not got:
 			missed[kind] = true
-	if missed.has("lines"):
-		rows.append("줄 수를 줄이면 별이 늘어요. 반복이나 함수를 써 보세요.")
-	if missed.has("steps"):
-		rows.append("더 짧은 길로 가거나 쓸데없는 회전을 줄여 보세요.")
-	if missed.has("ops"):
-		rows.append("실행은 컴퓨터가 일한 횟수예요. 같은 것을 두 번 세거나 다시 훑지 않게 해 보세요.")
+	# The villager explains each missed star: on the card now, and in their bubble after "다시 하기".
+	_star_hints = []
+	for kind in missed:
+		var hint := Dialogue.star_hint(_level_index, kind)
+		if hint != "":
+			_star_hints.append(hint)
+			rows.append(hint.replace("[code]", "").replace("[/code]", ""))
 	if kept != mask:
 		rows.append("지금까지 모은 별 " + Levels.star_marks(kept))
 	%ResultBody.text = "\n".join(rows)
