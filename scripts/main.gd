@@ -290,6 +290,7 @@ var _fast_host: WorldHost  # applies commands to _world without animation in fas
 var _fast_count: int = 0
 var _replay_pending: bool = false  # re-run on the map/seed where the hidden check failed
 var _run_commands: int = 0  # robot commands executed in the current run
+var _run_ops: int = 0  # CodeInterpreter.steps() of the current run, as of the last robot command
 var _ref_steps: Dictionary = {}  # "level:map" -> commands the reference solution needs (-1: not scored)
 var _menu: ChapterMenu
 var _fast_btn: Button
@@ -770,6 +771,7 @@ func _start_run(step_mode: bool, fast: bool = false) -> void:
 	_fast = fast
 	_fast_count = 0
 	_run_commands = 0
+	_run_ops = 0
 	_fast_host = WorldHost.new(_world)
 	_step_mode = step_mode
 	_step_tokens = 1 if step_mode else 0
@@ -779,6 +781,7 @@ func _start_run(step_mode: bool, fast: bool = false) -> void:
 		_log("주사위 시드: %d (같은 시드면 random 결과도 같아요)" % _run_seed, "#b8ad9c")
 
 	var result: Dictionary = await _interp.run(parsed["program"], self, _run_seed)
+	_run_ops = _interp.steps()
 
 	if _fast:
 		_sync_visuals()
@@ -840,9 +843,12 @@ func _evaluate_finish(program: Array) -> void:
 		var steps := _run_commands
 		var goals := _star_goals()
 		# One star per goal met (Levels.star_goals); stars earned in earlier runs are kept.
-		var mask := Levels.star_mask(goals, lines, steps)
+		var ops := _run_ops
+		var mask := Levels.star_mask(goals, lines, steps, ops)
 		if String(goals[2]["kind"]) == "steps":
 			_log("성공! 코드 %d줄 (목표 %d줄) · 명령 %d번 (목표 %d번)" % [lines, par, steps, int(goals[2]["max"])], "#9dff8a")
+		elif String(goals[2]["kind"]) == "ops":
+			_log("성공! 코드 %d줄 (목표 %d줄) · 실행 %d번 (목표 %d번)" % [lines, par, ops, int(goals[2]["max"])], "#9dff8a")
 		else:
 			_log("성공! 코드 %d줄 (목표 %d줄)" % [lines, par], "#9dff8a")
 		_sfx.play("success")
@@ -853,7 +859,7 @@ func _evaluate_finish(program: Array) -> void:
 		_refresh_level_select()
 		_npc_say([Dialogue.for_level(_level_index).get("success", "")], Villager.Mood.HAPPY)
 		await _robot.celebrate()
-		_show_result(goals, mask, kept, lines, steps)
+		_show_result(goals, mask, kept, lines, steps, ops)
 	else:
 		var f := _world.failure()
 		_log(_failure_text(_world, f), "#ffb35c")
@@ -1026,6 +1032,7 @@ func run_command(name: String, line: int, robot: int = 0, args: Array = []) -> S
 	if _stop_requested:
 		return ""
 	_run_commands += 1
+	_run_ops = _interp.steps()
 	_update_hud()
 	if _fast:
 		var fast_message := _command_fast(name, robot, args)
@@ -1338,7 +1345,7 @@ func _on_continue_pressed() -> void:
 
 
 ## `mask`: the stars this run earned, `kept`: those plus the ones from earlier runs.
-func _show_result(goals: Array[Dictionary], mask: int, kept: int, lines: int, steps: int) -> void:
+func _show_result(goals: Array[Dictionary], mask: int, kept: int, lines: int, steps: int, ops: int = 0) -> void:
 	var last := Levels.next_of(_level_index) < 0
 	%ResultTitle.text = "모든 레벨 완료!" if last else "레벨 클리어!"
 	%ResultStars.text = Levels.star_marks(mask)
@@ -1352,6 +1359,8 @@ func _show_result(goals: Array[Dictionary], mask: int, kept: int, lines: int, st
 			row += "  (지금 %d줄)" % lines
 		elif kind == "steps":
 			row += "  (지금 %d번)" % steps
+		elif kind == "ops":
+			row += "  (지금 %d번)" % ops
 		rows.append(row)
 		if not got:
 			missed[kind] = true
@@ -1359,6 +1368,8 @@ func _show_result(goals: Array[Dictionary], mask: int, kept: int, lines: int, st
 		rows.append("줄 수를 줄이면 별이 늘어요. 반복이나 함수를 써 보세요.")
 	if missed.has("steps"):
 		rows.append("더 짧은 길로 가거나 쓸데없는 회전을 줄여 보세요.")
+	if missed.has("ops"):
+		rows.append("실행은 컴퓨터가 일한 횟수예요. 같은 것을 두 번 세거나 다시 훑지 않게 해 보세요.")
 	if kept != mask:
 		rows.append("지금까지 모은 별 " + Levels.star_marks(kept))
 	%ResultBody.text = "\n".join(rows)
@@ -1458,6 +1469,8 @@ func _update_hud() -> void:
 	for goal in _star_goals():
 		if String(goal["kind"]) == "steps" and int(goal["max"]) >= 0:
 			parts.append("명령 %d/%d번" % [_run_commands, int(goal["max"])])
+		elif String(goal["kind"]) == "ops":
+			parts.append("실행 %d/%d번" % [_run_ops, int(goal["max"])])
 	_hud.text = "   ·   ".join(parts)
 
 

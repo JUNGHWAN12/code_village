@@ -10,6 +10,8 @@ extends RefCounted
 ## "par" is the target number of code lines (the code-lines star, see star_goals()).
 ## "star_steps" (optional) is the robot-command target of the commands star: one number, or a list with
 ## one number per map (main map first). Without it the target is what "solution" needs on that map.
+## "star_ops" (optional, same shape) replaces the commands star by a run-count star: statements executed
+## (CodeInterpreter.steps()) <= that number. For levels about computing, where the walk is always the same.
 ## "solution" is used by tests/run_tests.gd and is never shown to the player.
 ## "tools" picks which palette buttons are shown.
 ## "banned" (optional) lists robot functions this level does not allow, so the puzzle
@@ -535,6 +537,7 @@ const ALL: Array[Dictionary] = [
 		],
 		"facing": "E",
 		"report": "count",
+		"star_ops": [65, 65, 50],
 		"par": 8,
 		"tools": ["move", "pick", "while", "if", "cond", "not", "var", "items", "dict", "report", "print"],
 		"starter": "count = {}\n",
@@ -607,6 +610,7 @@ const ALL: Array[Dictionary] = [
 		"prices": {"apple": 3, "carrot": 2, "corn": 5},
 		"facing": "E",
 		"report": "price",
+		"star_ops": [65, 60, 45],
 		"par": 9,
 		"tools": ["move", "pick", "while", "if", "cond", "not", "var", "items", "dict", "market", "report", "print"],
 		"starter": "prices = market()\nprint(prices)\n",
@@ -830,6 +834,7 @@ const ALL: Array[Dictionary] = [
 		"prices": {"apple": 1200, "carrot": 850, "corn": 2300},
 		"facing": "E",
 		"report": "receipt",
+		"star_ops": [65, 60, 45],
 		"par": 10,
 		"tools": ["move", "pick", "while", "if", "cond", "not", "var", "items", "dict", "market", "report", "format_spec", "print"],
 		"starter": "prices = market()\nprint(prices)\nprint(f\"{1234567:,}\")\n",
@@ -907,6 +912,7 @@ const ALL: Array[Dictionary] = [
 		],
 		"variants": [["######################", "#SCCA.AAAACACC.CA.AAG#", "######################"], ["###########################", "#SA.CACA.CCACC.CCAACCACCAG#", "###########################"]],
 		"report": "gcd",
+		"star_ops": [130, 175, 230],
 		"facing": "E",
 		"par": 13,
 		"tools": ["move", "pick", "while", "if", "elif", "cond", "not", "var", "items", "math", "math_more", "report", "print"],
@@ -947,6 +953,7 @@ const ALL: Array[Dictionary] = [
 		],
 		"variants": [["###############", "#S.AKKAAKACC.G#", "###############"], ["################", "#SKKCCK..AKKCKG#", "################"]],
 		"report": "most",
+		"star_ops": [95, 90, 95],
 		"facing": "E",
 		"par": 9,
 		"tools": ["move", "pick", "while", "if", "cond", "not", "var", "items", "list", "counter", "report", "print"],
@@ -1111,24 +1118,30 @@ static func maps(level: Dictionary) -> Array:
 const LOOSE_LINES := 3
 
 
-## Whether the level has a commands star. Levels with "seeds" do not (the count depends on the dice),
-## unless they set "star_steps".
+## Whether the level has a commands star. Levels with "star_ops" have a run-count star instead, and
+## levels with "seeds" have none (the count depends on the dice) unless they set "star_steps".
 static func scores_steps(level: Dictionary) -> bool:
-	return level.has("star_steps") or not level.has("seeds")
+	return not level.has("star_ops") and (level.has("star_steps") or not level.has("seeds"))
+
+
+## A "star_steps" / "star_ops" value for one map: the number itself, or its entry in a per-map list.
+static func _per_map(value: Variant, map_index: int) -> int:
+	return int(value[map_index]) if value is Array else int(value)
 
 
 ## The three stars of a level on one map, in display order; bit i of a star mask is goal i.
-## Each goal is {"kind", "max"}: "clear" (solved), "lines" (code lines <= max), "steps" (robot commands <= max).
+## Each goal is {"kind", "max"}: "clear" (solved), "lines" (code lines <= max), "steps" (robot commands <= max),
+## "ops" (statements executed <= max).
 ## `ref_steps` is what the reference solution needs on that map (-1: unknown, the star cannot be earned).
 ## Levels without a commands star have two code-lines stars instead: par + LOOSE_LINES, then par.
 static func star_goals(level: Dictionary, map_index: int = 0, ref_steps: int = -1) -> Array[Dictionary]:
 	var par := int(level["par"])
 	var goals: Array[Dictionary] = [{"kind": "clear", "max": 0}]
-	if scores_steps(level):
-		var steps := ref_steps
-		if level.has("star_steps"):
-			var own: Variant = level["star_steps"]
-			steps = int(own[map_index]) if own is Array else int(own)
+	if level.has("star_ops"):
+		goals.append({"kind": "lines", "max": par})
+		goals.append({"kind": "ops", "max": _per_map(level["star_ops"], map_index)})
+	elif scores_steps(level):
+		var steps := _per_map(level["star_steps"], map_index) if level.has("star_steps") else ref_steps
 		goals.append({"kind": "lines", "max": par})
 		goals.append({"kind": "steps", "max": steps})
 	else:
@@ -1137,8 +1150,9 @@ static func star_goals(level: Dictionary, map_index: int = 0, ref_steps: int = -
 	return goals
 
 
-## Bit mask of the goals a solved run met with `lines` code lines and `steps` robot commands.
-static func star_mask(goals: Array[Dictionary], lines: int, steps: int) -> int:
+## Bit mask of the goals a solved run met with `lines` code lines, `steps` robot commands and
+## `ops` statements executed.
+static func star_mask(goals: Array[Dictionary], lines: int, steps: int, ops: int = 0) -> int:
 	var mask := 0
 	for i in goals.size():
 		var top := int(goals[i]["max"])
@@ -1148,6 +1162,8 @@ static func star_mask(goals: Array[Dictionary], lines: int, steps: int) -> int:
 				met = lines <= top
 			"steps":
 				met = top >= 0 and steps <= top
+			"ops":
+				met = ops <= top
 		if met:
 			mask |= 1 << i
 	return mask
@@ -1175,4 +1191,6 @@ static func star_text(goal: Dictionary) -> String:
 			return "코드 %d줄 이하" % int(goal["max"])
 		"steps":
 			return "명령 %d번 이하" % int(goal["max"]) if int(goal["max"]) >= 0 else "명령 수 줄이기"
+		"ops":
+			return "실행 %d번 이하" % int(goal["max"])
 	return "클리어"
