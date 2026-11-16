@@ -27,6 +27,10 @@ const CLIP_DIR: String = "res://asset/characters/anims/"
 const IDLE_CLIPS: PackedStringArray = ["villager_male_idle1", "villager_male_idle2", "villager_male_idle3"]
 ## Radians the arms swing down from the bind T-pose when no clip poses them.
 const ARM_DROP: float = 1.25
+## The clip a model walks with (walk_in).
+const WALK_CLIPS: Dictionary = {"male": "villager_male_walk1", "female": "female_villager_walk"}
+## Seconds a change of clip takes to blend in.
+const FADE: float = 0.3
 
 enum Mood { IDLE, TALK, HAPPY, SAD }
 
@@ -40,8 +44,14 @@ var _mood_time: float = 0.0
 var _time: float = 0.0
 var _base_y: float = 0.0
 var _materials: Dictionary = {}
-var _clip: Dictionary = {}  # the idle clip being played, see load_clip(); {} = pose from code only
+var _clip: Dictionary = {}  # the clip being played, see load_clip(); {} = pose from code only
+var _idle: Dictionary = {}  # the clip this villager stands in
 var _pose: Dictionary = {}  # bone index -> Quaternion the clip gave this frame
+var _rest_pos: Dictionary = {}  # bone index -> rest position
+var _from: Dictionary = {}  # bone index -> Quaternion when the clip last changed (blend start)
+var _fade: float = 0.0  # seconds of blend left after a change of clip
+var _kind: String = "male"
+var _walk: Tween
 
 static var _clips: Dictionary = {}  # clip name -> loaded clip ({} when the file is missing)
 
@@ -52,6 +62,7 @@ func setup(look: Dictionary) -> void:
 	if _model:
 		_model.queue_free()
 	var kind: String = look.get("model", "male")
+	_kind = kind
 	_model = (load(MODELS[kind]) as PackedScene).instantiate()
 	add_child(_model)
 	_skel = _model.find_children("*", "Skeleton3D", true, false)[0]
@@ -70,8 +81,49 @@ func setup(look: Dictionary) -> void:
 	_learn_axes()
 	_fit_to_height()
 	var parts: Array = look.get("parts", [])
-	_clip = load_clip(look.get("clip", IDLE_CLIPS[hash(str(parts)) % IDLE_CLIPS.size()]))
+	_idle = load_clip(look.get("clip", IDLE_CLIPS[hash(str(parts)) % IDLE_CLIPS.size()]))
+	_clip = _idle
+	_fade = 0.0
 	_apply_pose(0.0)
+
+
+## Walks in from `offset` (in the parent's space) to where the villager stands now, then turns
+## back to its heading and stands. Returns when it has arrived; at once without a walk clip.
+func walk_in(offset: Vector3, seconds: float) -> void:
+	stand()
+	var clip := load_clip(WALK_CLIPS.get(_kind, ""))
+	if clip.is_empty() or _idle.is_empty() or not is_inside_tree():
+		return
+	var spot := position
+	var heading := rotation.y
+	position = spot + offset
+	rotation.y = atan2(-offset.x, -offset.z)  # the model faces +Z at rotation.y = 0
+	_set_clip(clip)
+	_walk = create_tween()
+	_walk.tween_property(self, "position", spot, seconds)
+	_walk.tween_callback(_set_clip.bind(_idle))
+	_walk.tween_property(self, "rotation:y", heading, FADE).set_trans(Tween.TRANS_SINE)
+	await _walk.finished
+
+
+## Ends a walk where it is and goes back to the standing clip. The owner then places the villager.
+func stand() -> void:
+	if _walk and _walk.is_valid():
+		_walk.kill()
+	_walk = null
+	if _clip != _idle:
+		_set_clip(_idle)
+
+
+## Changes the clip, blending from the pose the bones are in now.
+func _set_clip(clip: Dictionary) -> void:
+	_from.clear()
+	if _skel:
+		for i in _skel.get_bone_count():
+			_from[i] = _skel.get_bone_pose_rotation(i)
+	_fade = FADE
+	_clip = clip
+	_time = 0.0
 
 
 func say_mood(mood: int, duration: float = 2.0) -> void:
@@ -133,7 +185,8 @@ static func load_clip(clip_name: String) -> Dictionary:
 
 
 ## Poses the bones from the clip at time t (looping), blending between its two nearest frames.
-func _play_clip(t: float) -> void:
+## Bones the clip does not move go back to rest, and a change of clip blends in over FADE seconds.
+func _play_clip(t: float, delta: float) -> void:
 	_pose.clear()
 	var frames: int = _clip["frames"]
 	var at := fposmod(t, _clip["length"]) / float(_clip["length"]) * (frames - 1)
@@ -146,9 +199,16 @@ func _play_clip(t: float) -> void:
 		var d: PackedFloat32Array = rot[bone]
 		var q0 := Quaternion(d[a * 4], d[a * 4 + 1], d[a * 4 + 2], d[a * 4 + 3])
 		var q1 := Quaternion(d[a * 4 + 4], d[a * 4 + 5], d[a * 4 + 6], d[a * 4 + 7])
-		var q := q0.normalized().slerp(q1.normalized(), w)
-		_pose[_bones[bone]] = q
-		_skel.set_bone_pose_rotation(_bones[bone], q)
+		_pose[_bones[bone]] = q0.normalized().slerp(q1.normalized(), w)
+	_fade = maxf(0.0, _fade - delta)
+	var mix := 1.0 - _fade / FADE
+	for i in _skel.get_bone_count():
+		var q: Quaternion = _pose.get(i, _rest[i])
+		if _fade > 0.0 and _from.has(i):
+			q = (_from[i] as Quaternion).slerp(q, mix)
+			_pose[i] = q
+		_skel.set_bone_pose_rotation(i, q)
+		_skel.set_bone_pose_position(i, _rest_pos[i])
 	var pos: Dictionary = _clip["pos"]
 	for bone in pos:
 		# The hips stay where the rig put them: some clips were made around another root height
@@ -158,14 +218,14 @@ func _play_clip(t: float) -> void:
 		var p: PackedFloat32Array = pos[bone]
 		var p0 := Vector3(p[a * 3], p[a * 3 + 1], p[a * 3 + 2])
 		var p1 := Vector3(p[a * 3 + 3], p[a * 3 + 4], p[a * 3 + 5])
-		_skel.set_bone_pose_position(_bones[bone], p0.lerp(p1, w))
+		_skel.set_bone_pose_position(_bones[bone], _rest_pos[_bones[bone]].lerp(p0.lerp(p1, w), mix))
 
 
-func _apply_pose(_delta: float) -> void:
+func _apply_pose(delta: float) -> void:
 	var t := _time
 	var clip := not _clip.is_empty()
 	if clip:
-		_play_clip(t)
+		_play_clip(t, delta)
 	var nod := 0.0
 	var shake := 0.0
 	var lean := 0.0 if clip else sin(t * 1.3) * 0.03
@@ -220,6 +280,7 @@ func _find_bones() -> void:
 		var short := _skel.get_bone_name(i).trim_prefix(B)
 		_bones[short] = i
 		_rest[i] = _skel.get_bone_rest(i).basis.get_rotation_quaternion()
+		_rest_pos[i] = _skel.get_bone_rest(i).origin
 		_skel.set_bone_pose_rotation(i, _rest[i])
 
 
