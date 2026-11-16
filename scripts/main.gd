@@ -478,6 +478,19 @@ func _open_menu() -> void:
 	_menu.open(stars, _unlocked, _unlock_all(), _level_index)
 
 
+## Test commands: type one alone in the code editor and press ▶ 실행. "#unlock" opens every level,
+## "#lock" turns the locks back on (the same setting as the teacher checkbox, kept in the save).
+## The level's code comes back afterwards and the command itself is never saved.
+func _test_command(text: String) -> bool:
+	if text != "#unlock" and text != "#lock":
+		return false
+	var on := text == "#unlock"
+	_code.text = _codes.get(_level_index, _progress.get_value("code", str(_level_index), Levels.ALL[_level_index]["starter"]))
+	_on_unlock_all_toggled(on)
+	_log("모든 레벨을 열었어요. 다시 잠그려면 #lock 을 실행해요." if on else "레벨 잠금을 다시 켰어요.", "#9fd4ff")
+	return true
+
+
 func _on_unlock_all_toggled(on: bool) -> void:
 	_progress.set_value("meta", "unlock_all", on)
 	_save_progress()
@@ -718,6 +731,8 @@ func _on_reset_pressed() -> void:
 
 
 func _start_run(step_mode: bool, fast: bool = false) -> void:
+	if _test_command(_code.text.strip_edges()):
+		return
 	_result.hide()
 	_bubble.dismiss()
 	_robot_bubble.dismiss()
