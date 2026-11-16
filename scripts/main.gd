@@ -653,7 +653,7 @@ func _process(_delta: float) -> void:
 	var hover := not _running and not _menu.visible and _over_villager(get_viewport().get_mouse_position())
 	_view.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if hover else Control.CURSOR_ARROW
 	if _bubble.visible and _villager.visible:
-		var head := _villager.head_position()
+		var head := _villager.bubble_anchor()
 		var view := _view.get_global_rect()
 		var target := view.get_center() if _camera.is_position_behind(head) else view.position + _camera.unproject_position(head)
 		# Keep clear of the HUD panel along the top of the view.
