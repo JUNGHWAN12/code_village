@@ -12,12 +12,13 @@ func _init(w: GridWorld) -> void:
 
 
 ## Runs an already parsed program on `map` of `level`.
-## Returns {"result": Dictionary from CodeInterpreter.run, "world": GridWorld}.
+## Returns {"result": Dictionary from CodeInterpreter.run, "world": GridWorld, "commands": robot commands run}.
 static func run_on_map(level: Dictionary, map_index: int, program: Array, rng_seed: int = 0) -> Dictionary:
 	var w := GridWorld.new()
 	w.load_level(Levels.for_map(level, map_index))
-	var result: Dictionary = await CodeInterpreter.new().run(program, WorldHost.new(w), rng_seed)
-	return {"result": result, "world": w}
+	var host := WorldHost.new(w)
+	var result: Dictionary = await CodeInterpreter.new().run(program, host, rng_seed)
+	return {"result": result, "world": w, "commands": host.commands}
 
 
 ## Robot commands the reference solution needs on a map, or -1 when that is not scored (levels with

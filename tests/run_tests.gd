@@ -123,8 +123,9 @@ func _run_all() -> void:
 		for i in maps.size():
 			var ref := WorldHost.reference_steps(level, i)
 			var goals := Levels.star_goals(level, i, ref)
-			_expect(ref >= 0 or not Levels.scores_steps(level), "%s map %d has a commands target" % [level["title"], i])
-			_expect(goals.size() == 3 and Levels.star_mask(goals, lines, ref) == 7,
+			_expect(int(goals[2]["max"]) >= 0, "%s map %d: every star has a target" % [level["title"], i])
+			# Seeded levels with "star_steps" are checked per seed below.
+			_expect(goals.size() == 3 and Levels.star_mask(goals, lines, maxi(ref, 0)) == 7,
 					"%s map %d: the solution earns 3 stars %s" % [level["title"], i, goals])
 		var program: Array = out["parsed"]["program"]
 		for check in WorldHost.checks(level):
@@ -132,6 +133,10 @@ func _run_all() -> void:
 			var vw: GridWorld = run["world"]
 			_expect(run["result"]["ok"] and vw.is_solved(), "%s solves map %d seed %d %s" % [
 				level["title"], check["map"], check["seed"], run["result"].get("message", "")])
+			if level.has("star_steps"):
+				var top := int(Levels.star_goals(level, check["map"])[2]["max"])
+				_expect(int(run["commands"]) <= top, "%s map %d seed %d: the solution meets star_steps %d -> %d" % [
+					level["title"], check["map"], check["seed"], top, run["commands"]])
 
 	print("== Stars ==")
 	var plain := {"par": 5}
