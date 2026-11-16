@@ -353,6 +353,7 @@ func _ready() -> void:
 	_menu.unlock_all_toggled.connect(_on_unlock_all_toggled)
 	_menu.skin_chosen.connect(_on_skin_chosen)
 	_menu.export_requested.connect(_on_export_requested)
+	_menu.student_changed.connect(_on_student_changed)
 	_refresh_level_select()
 	var start_level := clampi(int(_progress.get_value("meta", "last_level", 0)), 0, Levels.ALL.size() - 1)
 	while Levels.prev_of(start_level) >= 0 and not _unlocked(start_level):
@@ -505,10 +506,20 @@ func _on_export_requested() -> void:
 	if folder == "":
 		folder = OS.get_user_data_dir()
 	var stamp := Time.get_datetime_string_from_system().replace("T", "_").replace(":", "")
-	var path := folder.path_join("code_village_%s.csv" % stamp)
-	var problem := ProgressExport.save(path, masks, codes)
+	var path := folder.path_join(ProgressExport.file_name(_student(), stamp))
+	var problem := ProgressExport.save(path, masks, codes, _student())
 	_menu.show_note("저장했어요: %s" % path if problem == "" else problem, problem == "")
 	_log("진행 내보내기: %s" % (path if problem == "" else problem), "#9fd4ff" if problem == "" else "#ffb35c")
+
+
+## The player's name (typed on the chapter screen), written into exported progress files.
+func _student() -> String:
+	return String(_progress.get_value("meta", "student", ""))
+
+
+func _on_student_changed(text: String) -> void:
+	_progress.set_value("meta", "student", text.strip_edges().left(ChapterMenu.STUDENT_MAX))
+	_save_progress()
 
 
 func _unlock_all() -> bool:
@@ -540,6 +551,7 @@ func _open_menu() -> void:
 	var masks: Array = []
 	for i in Levels.ALL.size():
 		masks.append(_star_mask(i))
+	_menu.set_student(_student())
 	_menu.open(masks, _unlocked, _unlock_all(), _level_index, _reference_steps, _skin())
 
 

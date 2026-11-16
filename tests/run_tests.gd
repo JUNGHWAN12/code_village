@@ -186,17 +186,21 @@ func _run_all() -> void:
 	ex_masks[0] = 5
 	ex_codes[0] = "move()\nprint(\"a, b\")\n"
 	ex_masks[1] = 7
-	var table := ProgressExport.csv(ex_masks, ex_codes)
+	var table := ProgressExport.csv(ex_masks, ex_codes, "김 하늘")
 	var ex_rows := table.trim_prefix(ProgressExport.BOM).split("\r\n")
 	_expect(table.begins_with(ProgressExport.BOM), "export: starts with a BOM so Excel reads Korean")
 	_expect(ex_rows[0] == "\"" + "\",\"".join(ProgressExport.HEADER) + "\"", "export: header row -> %s" % ex_rows[0])
-	_expect(ex_rows[1] == "\"1\",\"첫 걸음\",\"첫 걸음\",\"2\",\"O\",\"코드 4줄 이하\",\"\",\"명령 4번 이하\",\"O\",\"2\",\"4\",\"move()\nprint(\"\"a, b\"\")\n\"",
+	_expect(ex_rows[1] == "\"김 하늘\",\"1\",\"첫 걸음\",\"첫 걸음\",\"2\",\"O\",\"코드 4줄 이하\",\"\",\"명령 4번 이하\",\"O\",\"2\",\"4\",\"move()\nprint(\"\"a, b\"\")\n\"",
 			"export: a level row keeps stars, targets and quoted code -> %s" % ex_rows[1])
 	_expect(table.count("\r\n") == Levels.ALL.size() + 2, "export: a row per level, a header and a total (%d)" % table.count("\r\n"))
-	_expect(table.ends_with("\"\",\"\",\"합계\",\"5 / %d\"\r\n" % (Levels.ALL.size() * 3)), "export: total row")
+	_expect(table.ends_with("\"김 하늘\",\"\",\"\",\"합계\",\"5 / %d\"\r\n" % (Levels.ALL.size() * 3)), "export: total row")
 	_expect(ProgressExport._row(["=1+1", "-x", "a\"b"]) == "\"'=1+1\",\"'-x\",\"a\"\"b\"", "export: formulas are shown, not run; quotes doubled")
 	var ex_path := OS.get_user_data_dir().path_join("export_test.csv")
-	_expect(ProgressExport.save(ex_path, ex_masks, ex_codes) == "" and FileAccess.get_file_as_bytes(ex_path) == table.to_utf8_buffer(), "export: writes the file")
+	_expect(ProgressExport.csv(ex_masks, ex_codes).contains("\r\n\"\",\"1\",\"첫 걸음\""), "export: without a name the first cell is empty")
+	_expect(ProgressExport.file_name(" 김 하늘 ", "2026-01-02_0304") == "code_village_김_하늘_2026-01-02_0304.csv", "export: file name carries the name -> %s" % ProgressExport.file_name(" 김 하늘 ", "2026-01-02_0304"))
+	_expect(ProgressExport.file_name("", "s") == "code_village_s.csv" and ProgressExport.file_name("../a\\b:c", "s") == "code_village_a_b_c_s.csv",
+			"export: file name is safe -> %s" % ProgressExport.file_name("../a\\b:c", "s"))
+	_expect(ProgressExport.save(ex_path, ex_masks, ex_codes, "김 하늘") == "" and FileAccess.get_file_as_bytes(ex_path) == table.to_utf8_buffer(), "export: writes the file")
 	_expect(FileAccess.get_file_as_bytes(ex_path).slice(0, 3) == PackedByteArray([0xEF, 0xBB, 0xBF]), "export: the file starts with the UTF-8 BOM bytes")
 	DirAccess.remove_absolute(ex_path)
 	_expect(ProgressExport.save("Z:/no/such/folder/x.csv", ex_masks, ex_codes).contains("쓸 수 없어요"), "export: reports a path it cannot write")
