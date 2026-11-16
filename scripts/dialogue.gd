@@ -87,6 +87,8 @@ const FAIL: Dictionary = {
 		"report": "보고한 값이 실제와 다르구나. 다시 세어 보렴.",
 		"rule": "종류마다 하나씩만 가져오렴.",
 		"route": "다 모았구나. 그런데 더 덜 걷는 순서가 있단다.",
+		"delivery": "배달할 집이 틀렸구나. 다시 확인해 보렴.",
+		"flag": "그 깃발이 아니란다. 곧게 재어 보렴.",
 		"speech": "인사를 제대로 해 주렴. 이름과 개수를 넣어서.",
 	},
 	"polite": {
@@ -98,6 +100,8 @@ const FAIL: Dictionary = {
 		"report": "보고한 값이 실제와 달라요. 다시 계산해 볼까요?",
 		"rule": "종류마다 딱 하나씩만 주워야 해요.",
 		"route": "다 모았어요! 그런데 더 짧게 걷는 순서가 있어요.",
+		"delivery": "배달한 집이 달라요. 어느 집에 줘야 하는지 다시 볼까요?",
+		"flag": "그 깃발이 아니에요. 곧게 잰 거리를 비교해 보세요.",
 		"speech": "인사말이 달라요. 이름과 개수를 넣어 다시 말해 볼까요?",
 	},
 	"gruff": {
@@ -109,6 +113,8 @@ const FAIL: Dictionary = {
 		"report": "보고가 틀렸군. 다시 세어 보게.",
 		"rule": "종류마다 하나씩이라고 했지.",
 		"route": "너무 많이 돌아다녔군. 더 짧은 순서가 있네.",
+		"delivery": "엉뚱한 집에 갔군. 다시 보게.",
+		"flag": "그 깃발이 아니네. 곧게 재어 보게.",
 		"speech": "인사가 틀렸군. 다시 말해 보게.",
 	},
 	"chief": {
@@ -120,6 +126,8 @@ const FAIL: Dictionary = {
 		"report": "보고한 값이 실제와 다르오.",
 		"rule": "종류마다 하나씩만 거두시오.",
 		"route": "모두 거두었으나 더 짧은 순서가 있소.",
+		"delivery": "배달이 맞지 않소.",
+		"flag": "그 깃발이 아니오.",
 		"speech": "인사말이 틀렸소.",
 	},
 }
@@ -330,9 +338,9 @@ const LEVELS: Array[Dictionary] = [
 	# Added later (same order as the end of Levels.ALL)
 	{
 		"who": "toma",
-		"intro": ["우편함 번호 목록이 왔어요. 이번엔 짝수 집에만 배달해요!", "목록에서 짝수만 골라 [code]report()[/code] 로 알려 주세요. 한 줄로요!"],
-		"hints": ["[code]n % 2 == 0[/code] 이면 짝수예요.", "[code][n for n in 목록 if 조건][/code] 은 조건에 맞는 것만 모은 새 목록이에요."],
-		"success": "짝수 집만 쏙쏙! 깔끔한 목록이에요.",
+		"intro": ["오늘 온 편지의 집 번호 목록이에요. 이번엔 짝수 집에 온 편지만 배달해요!", "짝수 번호 집이라도 편지가 없으면 그냥 지나가요. 배달할 번호를 먼저 골라 두세요."],
+		"hints": ["[code]n % 2 == 0[/code] 이면 짝수예요. [code][n for n in mailboxes() if n % 2 == 0][/code] 으로 골라요.", "집 앞에서 [code]house_here() in targets[/code] 이면 [code]deliver()[/code]."],
+		"success": "짝수 집만 쏙쏙! 편지가 제자리에 갔어요.",
 	},
 	{
 		"who": "mikhail",
@@ -366,15 +374,15 @@ const LEVELS: Array[Dictionary] = [
 	},
 	{
 		"who": "toma",
-		"intro": ["우편함 쪽지에 장난꾸러기가 글자를 섞어 놨어요!", "숫자 쪽지만 골라서 더해 주세요."],
+		"intro": ["창고 문 암호를 쪽지에 나눠 적어 뒀는데, 장난꾸러기가 글자를 섞어 놨어요!", "숫자 쪽지만 골라 더한 값이 암호예요. 문 앞에서 말해 주세요."],
 		"hints": ["[code]\"12\".isdigit()[/code] 는 True, [code]\"x3\".isdigit()[/code] 는 False 예요.", "[code]filter(조건함수, 목록)[/code] 은 고르고, [code]map(int, 목록)[/code] 은 모두 숫자로 바꿔요."],
-		"success": "숫자만 쏙쏙 골라 더했네요. 고마워요!",
+		"success": "문이 열렸어요! 숫자만 쏙쏙 골라 더했네요.",
 	},
 	{
 		"who": "igor",
-		"intro": ["측량 일을 돕겠나? 길로 걸으면 꺾어 가야 하지만, 새는 곧게 날아가지.", "출발하기 전에 목표까지 곧은 거리를 재서 알려 주게."],
-		"hints": ["가로 a칸, 세로 b칸이면 곧은 거리는 [code]math.hypot(a, b)[/code] 야. 피타고라스 정리지.", "[code]round(d, 2)[/code] 로 소수 둘째 자리까지 반올림하게."],
-		"success": "정확한 측량이군! 지도에 적어 두겠네.",
+		"intro": ["측량 일을 돕겠나? 밭에 깃발을 여럿 꽂아 두었네.", "새가 날아가듯 곧게 잰 거리가 가장 가까운 깃발로 가 주게. 걸어서 가까운 깃발과는 다를 걸세."],
+		"hints": ["가로 a칸, 세로 b칸이면 곧은 거리는 [code]math.hypot(a, b)[/code] 야. 피타고라스 정리지.", "[code]min(flags(), key=lambda f: math.hypot(f[0] - x, f[1] - y))[/code] 로 고르게."],
+		"success": "바로 그 깃발이야! 정확한 측량이군.",
 	},
 	{
 		"who": "olga",
@@ -384,9 +392,9 @@ const LEVELS: Array[Dictionary] = [
 	},
 	{
 		"who": "ivan",
-		"intro": ["촌장이오. 오늘 청소 당번을 정해야 하오.", "몇 명이 필요한지는 물어보시오. 명단에서 겹치지 않게 무작위로 뽑아 주시오."],
+		"intro": ["촌장이오. 오늘 청소 당번을 정해야 하오.", "몇 명이 필요한지는 물어보시오. 명단에서 겹치지 않게 무작위로 뽑아, 뽑힌 사람 집에 알림을 넣어 주시오."],
 		"hints": ["[code]random.sample(목록, k)[/code] 는 서로 다른 k개를 뽑소.", "몇 명인지는 [code]int(input(\"몇 명 뽑을까요? \"))[/code] 로 받으시오."],
-		"success": "공평하게 뽑았구려. 당번들에게 알리겠소.",
+		"success": "공평하게 뽑아 알림까지 돌렸구려. 고맙소.",
 	},
 	{
 		"who": "natasha",
@@ -396,15 +404,15 @@ const LEVELS: Array[Dictionary] = [
 	},
 	{
 		"who": "petra",
-		"intro": ["빵집 앞 줄이 엉망이에요! 급한 손님은 맨 앞으로 끼어들거든요.", "누가 어떤 순서로 빵을 받았는지 정리해 주세요."],
-		"hints": ["[code]deque[/code] 는 [code]append()[/code] 로 뒤에, [code]appendleft()[/code] 로 앞에 넣어요.", "\"-\" 를 만나면 [code]popleft()[/code] 로 맨 앞 손님을 꺼내 받은 사람 목록에 넣어요."],
+		"intro": ["빵집 앞 줄이 엉망이에요! 급한 손님은 맨 앞으로 끼어들거든요.", "빵을 받은 순서대로 그 손님 집에 빵을 배달해 주세요. 순서가 바뀌면 안 돼요!"],
+		"hints": ["[code]deque[/code] 는 [code]append()[/code] 로 뒤에, [code]appendleft()[/code] 로 앞에 넣어요. \"-\" 면 [code]popleft()[/code].", "받은 사람마다 [code]x, y = houses()[이름][/code] 으로 집 위치를 찾아 가서 [code]deliver()[/code]."],
 		"success": "순서가 딱 맞아요. 이제 다툼이 없겠네요!",
 	},
 	{
 		"who": "anna",
-		"intro": ["사과 무게를 재 봤어요. 평균과 가운데 값이 궁금해요.", "[code][평균, 가운데 값][/code] 목록으로 알려 주세요."],
+		"intro": ["사과 저장고 문은 무게로 열려요. 첫 문은 평균, 둘째 문은 가운데 값이에요.", "무게 기록으로 계산해서 문마다 말해 주세요."],
 		"hints": ["[code]statistics.mean(w)[/code] 는 평균, [code]statistics.median(w)[/code] 은 가운데 값이에요.", "무게가 짝수 개면 가운데 두 값의 평균이 가운데 값이 돼요."],
-		"success": "평균도 가운데 값도 정확해요. 좋은 사과네요!",
+		"success": "두 문이 다 열렸어요! 평균도 가운데 값도 정확해요.",
 	},
 	{
 		"who": "mikhail",

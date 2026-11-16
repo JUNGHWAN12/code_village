@@ -69,6 +69,27 @@ func _expect_run_error(source: String, needle: String, label: String) -> void:
 	_expect(not r["ok"] and String(r["message"]).contains(needle), "%s -> %s" % [label, r["message"]])
 
 
+## Runs a shortcut program on the maps of the level titled `title` (all, or `only`) and expects it to
+## fail: either a runtime error containing `expect`, or a finished run whose failure() kind is `expect`.
+func _shortcut_fails(title: String, source: String, expect: String, only: Array = []) -> void:
+	var level: Dictionary = {}
+	for lvl in Levels.ALL:
+		if lvl["title"] == title:
+			level = lvl
+	var parsed := CodeInterpreter.new().parse(source)
+	if not parsed["ok"]:
+		_expect(false, "%s shortcut parses -> %s" % [title, parsed["message"]])
+		return
+	for i in Levels.maps(level).size():
+		if not only.is_empty() and not i in only:
+			continue
+		var run: Dictionary = await WorldHost.run_on_map(level, i, parsed["program"])
+		var result: Dictionary = run["result"]
+		var w: GridWorld = run["world"]
+		var failed: bool = String(result.get("message", "")).contains(expect) if not result["ok"] else w.failure().get("kind") == expect
+		_expect(failed, "%s map %d: a shortcut fails (%s) -> %s %s" % [title, i, expect, result.get("message", ""), w.failure()])
+
+
 func _run_all() -> void:
 	print("== Every script compiles ==")
 	for file in DirAccess.get_files_at("res://scripts"):
@@ -90,8 +111,12 @@ func _run_all() -> void:
 		var maps := Levels.maps(level)
 		for i in maps.size():
 			var text := "\n".join(PackedStringArray(maps[i]))
-			_expect(text.count("S") == 1 and text.count("G") == 1 + text.count("R"),
-					"%s map %d has one S and one G per robot" % [level["title"], i])
+			# Flag-choice levels have several G; delivery-order levels end at the last house, not on a G.
+			var flags_ok: bool = text.count("G") >= 2 if level.get("rule", "") == "nearest_flag" else (
+					text.count("G") == 0 if level.get("deliver", "") == "order" else text.count("G") == 1 + text.count("R"))
+			_expect(text.count("S") == 1 and flags_ok, "%s map %d has one S and the right goals" % [level["title"], i])
+			var plates: Array = Levels.for_map(level, i).get("houses", [])
+			_expect(text.count("M") == plates.size(), "%s map %d has a name plate per house" % [level["title"], i])
 		if not out["parsed"]["ok"]:
 			continue
 		var program: Array = out["parsed"]["program"]
@@ -526,12 +551,9 @@ func _run_python_more() -> void:
 
 	print("== Module levels ==")
 	var shortest: Dictionary = {}
-	var sample_level: Dictionary = {}
 	for lvl in Levels.ALL:
 		if lvl.get("rule", "") == "shortest":
 			shortest = lvl
-		if lvl.get("report", "") == "sample":
-			sample_level = lvl
 	var greedy := "def go(tx, ty):\n    x, y = get_pos()\n    face(\"E\" if tx > x else \"W\")\n    repeat abs(tx - x):\n        move()\n    face(\"S\" if ty > y else \"N\")\n    repeat abs(ty - y):\n        move()\nwhile treasure_map():\n    x, y = get_pos()\n    tx, ty = min(treasure_map(), key=lambda p: abs(p[0] - x) + abs(p[1] - y))\n    go(tx, ty)\n    pick()\ngo(*goal_pos())\n"
 	var in_order := greedy.substr(0, greedy.find("while")) + "for x, y in treasure_map():\n    go(x, y)\n    pick()\ngo(*goal_pos())\n"
 	for naive in [greedy, in_order]:
@@ -540,9 +562,15 @@ func _run_python_more() -> void:
 			var gr: Dictionary = await WorldHost.run_on_map(shortest, i, gp["program"])
 			var gw: GridWorld = gr["world"]
 			_expect(gr["result"]["ok"] and gw.failure().get("kind") == "route", "a naive order loses on the shortest-route map %d -> %s" % [i, gw.failure()])
-	var dup := CodeInterpreter.new().parse("names = mailboxes()\nreport([names[0], names[0]])\nwhile not at_goal():\n    move()\n")
-	var dr: Dictionary = await WorldHost.run_on_map(sample_level, 0, dup["program"])
-	_expect(not dr["result"]["ok"] and String(dr["result"]["message"]).contains("서로 다른"), "a sample with a repeated name is rejected -> %s" % dr["result"].get("message", ""))
+	# Levels where the computed answer decides what the robot does: shortcuts must fail on every map.
+	var go_fn := greedy.substr(0, greedy.find("while"))
+	await _shortcut_fails("짝수 우편함", "while not at_goal():\n    move()\n    n = house_here()\n    if n is not None and n % 2 == 0:\n        deliver()\n", "delivery")
+	await _shortcut_fails("당번 뽑기", "import random\nk = int(input())\nwhile not at_goal():\n    move()\n    if house_here() is not None:\n        deliver()\n", "delivery")
+	await _shortcut_fails("당번 뽑기", "import random\nk = int(input())\nmove()\nmove()\ndeliver()\ndeliver()\n", "이미 배달")
+	await _shortcut_fails("빵집 대기줄", "while not is_blocked():\n    move()\n    if house_here() in ['민지', '할머니', '철수', '다솜', '가온', '나래', '해', '달', '별', '구름']:\n        deliver()\n", "delivery")
+	await _shortcut_fails("곧은 거리", go_fn + "x, y = get_pos()\nfx, fy = min(flags(), key=lambda f: abs(f[0] - x) + abs(f[1] - y))\ngo(fx, fy)\n", "flag")
+	await _shortcut_fails("숫자만 골라 더하기", "while not at_goal():\n    if is_blocked():\n        say(len(mailboxes()))\n    move()\n", "열리지 않아요")
+	await _shortcut_fails("사과 무게", "import statistics\nw = mailboxes()\ncodes = [statistics.median(w), statistics.mean(w)]\nwhile not at_goal():\n    if is_blocked():\n        say(codes.pop(0))\n    move()\n", "열리지 않아요", [0])
 	var blocked := CodeInterpreter.new().parse("import os")
 	_expect(not blocked["ok"] and String(blocked["message"]).contains("파일"), "import os explains why -> %s" % blocked["message"])
 	await _expect_run_error("import math\nprint(math.factorial(25))", "20", "factorial range")

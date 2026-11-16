@@ -219,6 +219,16 @@ const PALETTE_MORE: Dictionary = {
 		["permutations(목록)", "permutations()", "가능한 모든 순서 (튜플들)", COLOR_VAR, true],
 		["min(..., key=함수)", "min(, key=)", "함수 값이 가장 작은 것", COLOR_VAR, true],
 	],
+	"house": [
+		["house_here()", "house_here()", "지금 서 있는 집의 이름표 (집이 아니면 None)", COLOR_COND, true],
+		["deliver()", "deliver()", "지금 서 있는 집에 배달해요", COLOR_CMD, false],
+	],
+	"houses": [
+		["houses()", "houses()", "이름표 → 집 위치 (x, y) 딕셔너리", COLOR_COND, true],
+		["deliver()", "deliver()", "지금 서 있는 집에 배달해요", COLOR_CMD, false],
+	],
+	"door_say": [["say(값)", "say()", "문 앞에서 말하면 암호가 돼요. 숫자도 말할 수 있어요", COLOR_CMD, false]],
+	"flags": [["flags()", "flags()", "깃발 위치 튜플의 목록", COLOR_COND, true]],
 	"comprehension": [
 		["[x for x in 목록]", "[x for x in ]", "목록의 값마다 계산해서 새 목록을 만들어요", COLOR_VAR, true],
 		["... if 조건]", " if ", "조건에 맞는 값만 골라요: [n for n in 목록 if n > 0]", COLOR_FLOW, true],
@@ -246,7 +256,8 @@ const TOOL_ORDER: PackedStringArray = [
 	"list", "random", "robots", "class", "tuple_pos", "treasure", "items", "dict", "order", "market", "report",
 	"strings", "fstring", "set", "try", "comprehension", "mailboxes", "sort_key",
 	"input", "fstring_say", "int_input", "drop", "format_spec", "ord_chr", "map_filter",
-	"math_more", "random_more", "counter", "deque", "statistics", "itertools",
+	"math_more", "random_more", "counter", "deque", "statistics", "itertools", "house", "houses", "door_say",
+	"flags",
 ]
 
 var _level_index: int = 0
@@ -600,7 +611,8 @@ func _place_villager() -> void:
 		_villager.setup(Dialogue.CAST[who]["look"])
 		_villager_who = who
 	# One column beside the goal, so the goal's light beam never stands between camera and villager.
-	var col := _world.goal.x + 1 if _world.goal.x + 1 <= _world.width - 2 else _world.goal.x - 1
+	var spot := _world.goal if not _world.goals.is_empty() else Vector2i(_world.width / 2, 1)
+	var col := spot.x + 1 if spot.x + 1 <= _world.width - 2 else spot.x - 1
 	col = clampi(col, 1, maxi(1, _world.width - 2))
 	_villager.position = _board.cell_to_world(Vector2i(col, -1)) + Vector3(0, 0, -0.3)
 	_villager.rotation.y = 0.0
@@ -889,6 +901,10 @@ static func _failure_text(w: GridWorld, f: Dictionary) -> String:
 			return "종류마다 딱 하나씩만 주워야 해요. 주운 것: %s" % GridWorld._show(w.picked)
 		"route":
 			return "목표에 도착했지만 더 짧은 순서가 있어요. 걸은 칸: %d / 가장 짧으면: %d" % [int(f["steps"]), int(f["best"])]
+		"delivery":
+			return "배달이 맞지 않아요. %s" % String(f["text"])
+		"flag":
+			return "이 깃발이 아니에요. 곧게 잰 거리가 가장 가까운 깃발로 가야 해요."
 		"speech":
 			return "손님에게 아직 제대로 인사하지 않았어요. 들어야 할 말: \"%s\"" % w.expected_speech()
 	return ""
@@ -1051,6 +1067,9 @@ func _command_fast(name: String, robot: int, args: Array) -> String:
 			_log("보고: %s" % GridWorld._show(args[0]), "#e6b8e0")
 		"say":
 			_log("로봇: \"%s\"" % _escape(str(args[0])), "#e6b8e0")
+		"deliver":
+			if message == "":
+				_log("배달: %s 집" % _escape(GridWorld._show(_world.deliveries.back())), "#e6b8e0")
 	if message == "":
 		return ""
 	var who := "" if _world.robot_count() == 1 else "%s 로봇: " % CodeInterpreter.ROBOT_NAMES[robot]
@@ -1113,6 +1132,16 @@ func _command(name: String, robot: int, args: Array) -> String:
 			_board.show_drop(_world.robots[robot], String(args[0]))
 			_sfx.play("drop", 0.05)
 			_log("배달: %s" % GridWorld.ITEM_NAMES[args[0]], "#e6b8e0")
+			await node.pick_up(t)
+		"deliver":
+			var err := _world.deliver(robot)
+			if err != "":
+				_sfx.play("bump")
+				await node.shrug(t * 1.2)
+				return who + err
+			_board.show_parcel(_world.robots[robot])
+			_sfx.play("drop", 0.05)
+			_log("배달: %s 집" % _escape(GridWorld._show(_world.deliveries.back())), "#e6b8e0")
 			await node.pick_up(t)
 		"report":
 			var err := _world.report(args[0])

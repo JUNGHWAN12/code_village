@@ -35,12 +35,17 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
   `input()` asks the host (`input_line`): the level's prepared answers (`inputs`, per map `input_lists`; the
   villager replies), otherwise main.gd opens a box under the console for the player to type into.
 - `scripts/levels.gd`: level maps (`#` blocked, `.` path, `S`/`R` robots, `G` goal, items `A` apple, `C` carrot, `K` corn,
-  `D` door, `I` signpost, `H` horse), par, hint, reference solution. Extra keys (documented in `grid_world.gd`):
-  `order`, `prices`, `report` (`count`/`price`/`receipt`/`answer`/`distance`/`gcd`/`most`/`sample`), `sign`/`password`,
-  `customer`/`speech` (a template; `{in0}` is the first input() answer), `rule` (`one_each`/`nearest_first`/`shortest`:
-  no more steps than the best order through all items, failure kind `route`), `horse_dir`, `inputs`. `Levels.PER_MAP` keys (`orders`,
-  `signs`, `passwords`, `customers`, `mailbox_lists`, `answers`, `input_lists`) hold one value per map; always load
-  a map with `Levels.for_map(level, i)`.
+  `D` door, `I` signpost, `H` horse, `M` house with a name plate), par, hint, reference solution. Extra keys
+  (documented in `grid_world.gd`): `order`, `prices`, `report` (`count`/`price`/`receipt`/`answer`/`distance`/`gcd`/
+  `most`/`sample`), `sign`/`password` (a list gives each door its own password), `customer`/`speech` (a template;
+  `{in0}` is the first input() answer), `rule` (`one_each`/`nearest_first`/`shortest`: no more steps than the best
+  order through all items, failure kind `route` / `nearest_flag`: several G, end on the one nearest by straight line),
+  `houses` + `deliver` (`set`/`order`/`sample`: which houses `deliver()` must reach), `horse_dir`, `inputs`.
+  `Levels.PER_MAP` keys (`orders`, `signs`, `passwords`, `customers`, `mailbox_lists`, `answers`, `input_lists`,
+  `house_lists`) hold one value per map; always load a map with `Levels.for_map(level, i)`.
+  Design rule: the value a level teaches to compute must decide what the robot does (which house, which flag,
+  which password). Do not add a walk to the goal after a `report()`; the tests run shortcut programs
+  (`_shortcut_fails`) that must fail on every map.
 - Horses step after every robot command: hosts call `GridWorld.tick()` (WorldHost and `main.run_command` both do).
 - `scripts/board.gd`: builds the board from `res://asset/glb/glb/*.glb`, auto-fitting each model to a footprint.
 - `scripts/robot.gd`, `scripts/camera_rig.gd`, `scripts/main.gd` (controller + interpreter host).
@@ -105,11 +110,8 @@ hard-coded move list fails on a hidden map. Use `banned` (e.g. `["at_goal"]`) wh
 math; banned names fail at parse time and are hidden from the palette. `tools` picks palette groups (`PALETTE` in `main.gd`).
 `required` (`random`, `class`, `inherit`) makes the lesson's feature mandatory. Levels using random need `seeds`:
 every map is checked with seed 1 (the visible run) plus those seeds, and the tests run the solution on all of them.
-Chapters: 1-3 sequence, 4-5 repeat, 6-8 conditions, 9-10 variables, 11-12 functions, 13-14 math, 15-16 lists,
-17-18 random, 19 robot objects, 20-21 classes and inheritance, 22-23 tuples, 24-27 dictionaries,
-28-29 strings (slicing, f-strings), 30 sets, 31-32 exceptions, then (display numbers) 35-37 input and formatting,
-38-39 builtins (ord/chr, map/filter), 42-46 modules (gcd, Counter, deque, statistics, permutations);
-math.hypot is level 15 and random.sample level 21. `required` also takes `dict`, `try`, `comprehension`, `lambda`, `input`.
+Chapters and the levels in them are listed in `Levels.CHAPTERS`; display numbers follow that order, so they shift
+when a level is placed into an earlier chapter. `required` also takes `dict`, `try`, `comprehension`, `lambda`, `input`.
 When writing level text from a shell heredoc, check that `\n` inside GDScript strings stayed escaped.
 
 ## Tooling
