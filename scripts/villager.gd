@@ -87,7 +87,13 @@ func talk(on: bool) -> void:
 		say_mood(Mood.IDLE, 0.0)
 
 
-## Head position in world space, for placing the speech bubble.
+## A steady point just above the head, for the speech bubble. It ignores the pose, so the bubble
+## stays still while the villager sways, nods or hops.
+func bubble_anchor() -> Vector3:
+	return global_position + Vector3(0, HEIGHT * 1.09 * global_transform.basis.get_scale().y, 0)
+
+
+## Head position in world space, following the pose (the click area over the villager).
 func head_position() -> Vector3:
 	if _skel == null or not _bones.has("head"):
 		return global_position + Vector3(0, HEIGHT, 0)
