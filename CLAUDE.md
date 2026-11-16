@@ -48,6 +48,10 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
   (`_shortcut_fails`) that must fail on every map.
 - Horses step after every robot command: hosts call `GridWorld.tick()` (WorldHost and `main.run_command` both do).
 - `scripts/board.gd`: builds the board from `res://asset/glb/glb/*.glb`, auto-fitting each model to a footprint.
+  Look: blocked cells are one raised lawn (`_add_turf`) with only round bushes (`BUSH`) and flat ground cover,
+  chosen per cell by `_cell_roll` (fixed, not random per run); stone tiles share one rotation; a low fence frames
+  the board; trees and buildings stay outside it. Keep props that look collectible (crates, barrels, baskets) off
+  the board: only gameplay objects (items, doors, houses, signs, horses, flags) stand out there.
 - `scripts/robot.gd`, `scripts/camera_rig.gd`, `scripts/main.gd` (controller + interpreter host).
 
 ## Villagers (quest givers)
