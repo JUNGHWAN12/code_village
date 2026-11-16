@@ -62,7 +62,11 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
   `asset/characters/anims/*.json` (`Villager.IDLE_CLIPS`, picked per villager from its outfit; a `CAST` look can name
   one with `"clip"`), sampled by hand each frame (`_play_clip`, no AnimationPlayer); talk/happy/sad are added from
   code on top. Without the clip files the whole pose comes from code (arms down from the T-pose, idle sway).
-  The clips' hips position is ignored (some were made around another root height). Bone axes are measured at setup; bone positions are computed from local
+  The clips' hips position is ignored (some were made around another root height). A change of clip blends over
+  `FADE` seconds (`_set_clip`); bones a clip does not move go back to rest. `walk_in()` plays the walk clip while
+  the villager moves to its spot: the level intro uses it (`main._start_intro`; dev runs skip it unless `--walk`).
+  Ivan (rake), Toma (crate) and Natasha (broom) stand in the clip made for their tool; the hammer, axe and wrench
+  clips are work loops that look wrong on someone who is talking, so those villagers keep a plain idle. Bone axes are measured at setup; bone positions are computed from local
   poses because `Skeleton3D.get_bone_global_pose` is stale before the first frame. The FBX skeleton is z-up.
 - `scripts/speech_bubble.gd`: 2D bubble over the view, tail on the villager's head (`main._process`). `[code]` in
   dialogue text is colored by `SpeechBubble.format()`. The hint button walks the villager's hints, then the level's `hint`.
@@ -102,11 +106,12 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
   and applies the glb palette). Pass a full `res://` path to `Board._spawn` for these.
 - `asset/characters/`: villager FBX (male, female) and palettes, extracted from the PRO Unity package. Outfits are
   mesh names toggled on/off (from the Unity prefabs). `asset/characters/anims/` holds the pack's 24 animation
-  clips as JSON (walk, sit, hammer, drink, rake, ...; only the three male idles are used so far). Make them with
+  clips as JSON (walk, sit, hammer, drink, rake, ...; in use: the three male idles, three tool idles and the two walks). Make them with
   `python tools/convert_unity_anims.py asset/<PRO pack>.unitypackage` after copying `asset/` in. The clips are per-bone
   Euler curves; Unity mirrors X on FBX import, so a rotation (x, y, z, w) becomes (x, -y, -z, w) and a position
   (-x, y, z). Both rigs share bone names and rest pose, so male clips fit the female model.
-  An exported build needs `*.json` in the export filter, or the villagers fall back to the code pose.
+  A default export ("all resources") already packs the JSON clips: checked with `--export-pack` and a run from the
+  pack alone, so no export filter is needed.
 - Otherwise only `asset/glb/glb` is used. `asset/FBX`, `asset/Texture`, the `.blend` pack and `SlavicWorldFree_Godot_*` have `.gdignore`
   (Unity duplicates, Blender files, and Slavic prefabs that expect `res://` at the pack root).
 - The pack colors everything from one 32x32 palette texture. Always run new glb instances through

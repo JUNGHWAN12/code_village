@@ -27,6 +27,8 @@ const VILLAGER_FRAME_MARGIN: float = 6.0
 const INTRO_DISTANCE: float = 7.5
 const INTRO_PITCH: float = -0.3
 const INTRO_LINE_SECONDS: float = 2.4
+const WALK_IN_DISTANCE: float = 4.5  # how far to the side the villager starts the level intro
+const WALK_IN_SECONDS: float = 1.6
 ## Body colors for robots() order; names are CodeInterpreter.ROBOT_NAMES. A lone robot wears the
 ## player's skin instead (Levels.SKINS, earned with stars).
 const ROBOT_COLORS: Array[Color] = [
@@ -291,6 +293,7 @@ var _fast_host: WorldHost  # applies commands to _world without animation in fas
 var _fast_count: int = 0
 var _replay_pending: bool = false  # re-run on the map/seed where the hidden check failed
 var _run_commands: int = 0  # robot commands executed in the current run
+var _intro_count: int = 0  # level intros started; tells an intro whether it is still the latest
 var _star_hints: Array = []  # the villager's lines about the stars the last clear missed
 var _run_ops: int = 0  # CodeInterpreter.steps() of the current run, as of the last robot command
 var _ref_steps: Dictionary = {}  # "level:map" -> commands the reference solution needs (-1: not scored)
@@ -668,6 +671,7 @@ func _place_villager() -> void:
 	var spot := _world.goal if not _world.goals.is_empty() else Vector2i(_world.width / 2, 1)
 	var col := spot.x + 1 if spot.x + 1 <= _world.width - 2 else spot.x - 1
 	col = clampi(col, 1, maxi(1, _world.width - 2))
+	_villager.stand()
 	_villager.position = _board.cell_to_world(Vector2i(col, -1)) + Vector3(0, 0, -0.3)
 	_villager.rotation.y = 0.0
 	# Larger than life: the far edge of the board is small on screen.
@@ -676,11 +680,18 @@ func _place_villager() -> void:
 
 ## Level intro: the camera starts on the villager's face, the request plays line by line, then
 ## the camera glides back to the board. A click skips a line; Run (or Esc) ends it at once.
+## The villager walks into the shot first (not in dev runs, whose screenshots want them standing).
 func _start_intro(lines: Array) -> void:
 	var look_at := _villager.global_position + Vector3(0, 1.45 * VILLAGER_SCALE, 0)
 	_cam.focus_on(look_at, INTRO_DISTANCE, INTRO_PITCH, true)
 	_intro_active = true
-	_npc_say(lines, Villager.Mood.IDLE, 0.0, INTRO_LINE_SECONDS)
+	_intro_count += 1
+	var mine := _intro_count
+	if _dev_args.is_empty() or _dev_args.has("walk"):
+		await _villager.walk_in(Vector3(-WALK_IN_DISTANCE, 0, 0), WALK_IN_SECONDS)
+	# Run, Esc or another level may have ended this intro during the walk.
+	if _intro_active and mine == _intro_count:
+		_npc_say(lines, Villager.Mood.IDLE, 0.0, INTRO_LINE_SECONDS)
 
 
 func _end_intro() -> void:

@@ -20,7 +20,7 @@ const CAST: Dictionary = {
 	"ivan": {
 		"name": "양치기 이반",
 		"style": "polite",
-		"look": {"model": "male", "parts": ["Eyebrows_01a", "Hair_01b", "Shirt_01a", "Shoes_01b", "Trousers_01a", "Vest_01b"], "item": "I_Villager_Rake_01a"},
+		"look": {"model": "male", "parts": ["Eyebrows_01a", "Hair_01b", "Shirt_01a", "Shoes_01b", "Trousers_01a", "Vest_01b"], "item": "I_Villager_Rake_01a", "clip": "villager_male_idle_rake"},
 	},
 	"boris": {
 		"name": "대장장이 보리스",
@@ -35,12 +35,12 @@ const CAST: Dictionary = {
 	"toma": {
 		"name": "우체부 토마",
 		"style": "polite",
-		"look": {"model": "male", "parts": ["Eyebrows_01a", "Hut_01b", "Moustache_01b", "Shirt_01a", "Shoes_01a", "Trousers_01a", "Vest_01a"], "item": "I_Villager_Box_01a"},
+		"look": {"model": "male", "parts": ["Eyebrows_01a", "Hut_01b", "Moustache_01b", "Shirt_01a", "Shoes_01a", "Trousers_01a", "Vest_01a"], "item": "I_Villager_Box_01a", "clip": "villager_male_idle_crate"},
 	},
 	"natasha": {
 		"name": "축제 준비위원 나타샤",
 		"style": "polite",
-		"look": {"model": "female", "parts": ["Bandana_02a", "Dress_04"], "item": "I_Broom"},
+		"look": {"model": "female", "parts": ["Bandana_02a", "Dress_04"], "item": "I_Broom", "clip": "female_villager_idle_broom"},
 	},
 	"mikhail": {
 		"name": "탐험가 미하일",
