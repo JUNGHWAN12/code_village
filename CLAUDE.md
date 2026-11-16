@@ -72,7 +72,9 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
 - Stars: one per goal in `Levels.star_goals(level, map, ref_steps)`: clear, code lines <= `par`, robot commands <=
   `star_steps` (a level key: one number or one per map; default is what the reference solution needs on that map,
   `WorldHost.reference_steps`). Levels with `seeds` and no `star_steps` have no commands star; their stars are clear,
-  lines <= par + 3, lines <= par. The save keeps a bit mask per level (`star_mask`, stars from different runs add up)
+  lines <= par + 3, lines <= par. `star_ops` (same shape) swaps the commands star for a run-count star: statements
+  executed, `CodeInterpreter.steps()`, the count that also stops endless loops. Used on the `report` levels, where the
+  walk never changes; targets are the solution's count plus about a quarter. The save keeps a bit mask per level (`star_mask`, stars from different runs add up)
   next to the count in `stars` (unlocking reads the count). The result card, level list and chapter menu show which
   star is which (`Levels.star_marks`, `star_text`). Tests check that every solution earns all three on every map.
 - Code completion (`_on_completion_requested`), villager click = next hint, failed hidden check re-runs itself.

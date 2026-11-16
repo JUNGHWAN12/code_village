@@ -137,6 +137,11 @@ func _run_all() -> void:
 				var top := int(Levels.star_goals(level, check["map"])[2]["max"])
 				_expect(int(run["commands"]) <= top, "%s map %d seed %d: the solution meets star_steps %d -> %d" % [
 					level["title"], check["map"], check["seed"], top, run["commands"]])
+			if level.has("star_ops"):
+				# The target leaves room for another way to write it, but not for twice the work.
+				var most := int(Levels.star_goals(level, check["map"])[2]["max"])
+				_expect(int(run["ops"]) <= most and most < int(run["ops"]) * 2, "%s map %d seed %d: star_ops %d fits the solution's %d" % [
+					level["title"], check["map"], check["seed"], most, run["ops"]])
 
 	print("== Stars ==")
 	var plain := {"par": 5}
@@ -153,6 +158,10 @@ func _run_all() -> void:
 	_expect(dice[1] == {"kind": "lines", "max": 8} and dice[2] == {"kind": "lines", "max": 5}, "stars: seeded level has two line stars %s" % [dice])
 	_expect(Levels.star_mask(dice, 7, 99) == 3 and Levels.star_mask(dice, 9, 0) == 1, "stars: seeded level ignores commands")
 	_expect(Levels.star_goals({"par": 5, "seeds": [2], "star_steps": 9})[2] == {"kind": "steps", "max": 9}, "stars: seeded level with star_steps")
+	var calc := Levels.star_goals({"par": 5, "star_ops": [40, 60]}, 1, 8)
+	_expect(calc[2] == {"kind": "ops", "max": 60} and not Levels.scores_steps({"par": 5, "star_ops": 40}), "stars: star_ops replaces the commands star %s" % [calc])
+	_expect(Levels.star_mask(calc, 5, 99, 60) == 7 and Levels.star_mask(calc, 5, 0, 61) == 3, "stars: run count decides the third star")
+	_expect(Levels.star_text(calc[2]) == "실행 60번 이하", "stars: run-count text")
 	_expect(Levels.star_marks(5) == "★☆★" and Levels.star_count(5) == 2, "stars: marks and count")
 	_expect(Levels.star_text(g[1]) == "코드 5줄 이하" and Levels.star_text(g[2]) == "명령 8번 이하", "stars: goal text")
 

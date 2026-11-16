@@ -1837,6 +1837,12 @@ func _parse_atom() -> Dictionary:
 # Running
 # =========================================================================
 
+## Work done by the last (or current) run: one per statement executed, loop pass and comprehension item.
+## The same count stops endless loops (MAX_STEPS); levels with "star_ops" score it.
+func steps() -> int:
+	return _steps
+
+
 ## Runs a parsed program. Returns {"ok": true} or
 ## {"ok": false, "line": int, "message": String} or {"ok": false, "stopped": true}.
 ## `rng_seed` makes the random module repeatable for the same run.
