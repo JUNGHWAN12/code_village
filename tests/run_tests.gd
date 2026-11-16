@@ -169,6 +169,14 @@ func _run_all() -> void:
 	_expect(tip == "%s\n★ 클리어\n☆ 코드 4줄 이하\n★ 명령 4번 이하" % Levels.title(0), "stars: chapter menu tooltip -> %s" % tip)
 	_expect(ChapterMenu.star_tip(0, 1).ends_with("☆ 명령 수 줄이기"), "stars: tooltip before the target is known")
 
+	_expect(Levels.SKINS[0]["stars"] == 0 and Levels.skin_unlocked(0, 0), "skins: the first color is free")
+	for i in range(1, Levels.SKINS.size()):
+		_expect(Levels.skin_stars(i) > Levels.skin_stars(i - 1) and Levels.skin_stars(i) <= Levels.ALL.size() * 3,
+				"skins: %s needs more stars than the one before, and no more than there are" % Levels.SKINS[i]["name"])
+	_expect(not Levels.skin_unlocked(1, 14) and Levels.skin_unlocked(1, 15), "skins: unlock at the star count")
+	_expect(Levels.skin_stars(Levels.SKINS.size() - 1) == Levels.ALL.size() * 3, "skins: the last color needs every star")
+	_expect(not Levels.skin_unlocked(99, 999) and not Levels.skin_unlocked(-1, 999), "skins: unknown index is locked")
+
 	print("== Parser errors ==")
 	var lvl: Dictionary = Levels.ALL[0]
 	var cases := {

@@ -5,6 +5,7 @@ extends Control
 
 signal level_chosen(index: int)
 signal unlock_all_toggled(on: bool)
+signal skin_chosen(index: int)
 signal closed
 
 const CARD_BG := Color(0.2, 0.15, 0.11, 0.97)
@@ -15,6 +16,7 @@ var _grid: GridContainer
 var _summary: Label
 var _unlock_box: CheckBox
 var _close_btn: Button
+var _skins: HBoxContainer
 
 
 func _ready() -> void:
@@ -68,6 +70,12 @@ func _ready() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(spacer)
+	_skins = HBoxContainer.new()
+	_skins.add_theme_constant_override("separation", 6)
+	foot.add_child(_skins)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(24, 0)
+	foot.add_child(gap)
 	_close_btn = Button.new()
 	_close_btn.text = "닫기"
 	_close_btn.custom_minimum_size = Vector2(120, 40)
@@ -79,7 +87,8 @@ func _ready() -> void:
 ## stars[i]: star mask of level i (bit per Levels.star_goals entry, 0 = not cleared).
 ## unlocked: Callable(i) -> bool. ref_steps: Callable(level index, map index) -> int, the commands the
 ## reference solution needs (asked only for a level the pointer is on).
-func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int, ref_steps: Callable = Callable()) -> void:
+## skin: the robot color in use (index into Levels.SKINS).
+func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int, ref_steps: Callable = Callable(), skin: int = 0) -> void:
 	for child in _grid.get_children():
 		child.queue_free()
 	var total := 0
@@ -87,6 +96,7 @@ func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int, ref_
 		total += Levels.star_count(int(s))
 	_summary.text = "★ %d / %d" % [total, stars.size() * 3]
 	_unlock_box.set_pressed_no_signal(unlock_all)
+	_fill_skins(total, skin)
 	for c in Levels.CHAPTERS.size():
 		_grid.add_child(_card(c, stars, unlocked, current, ref_steps))
 	show()
@@ -162,6 +172,38 @@ func _card(c: int, stars: Array, unlocked: Callable, current: int, ref_steps: Ca
 			level_chosen.emit(i))
 		row.add_child(btn)
 	return panel
+
+
+## The robot colors: a swatch per skin, locked ones showing the stars they need.
+func _fill_skins(total: int, current: int) -> void:
+	for child in _skins.get_children():
+		child.queue_free()
+	var label := Label.new()
+	label.text = "로봇 색"
+	label.add_theme_font_size_override("font_size", 14)
+	_skins.add_child(label)
+	for i in Levels.SKINS.size():
+		var skin: Dictionary = Levels.SKINS[i]
+		var is_open := Levels.skin_unlocked(i, total)
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(58, 40)
+		btn.add_theme_font_size_override("font_size", 13)
+		btn.text = ("✔" if i == current else "") if is_open else "★%d" % Levels.skin_stars(i)
+		btn.disabled = not is_open
+		btn.tooltip_text = "%s 로봇" % skin["name"] if is_open else "%s 로봇: 별 %d개를 모으면 열려요 (지금 %d개)" % [
+				skin["name"], Levels.skin_stars(i), total]
+		var color: Color = skin["color"]
+		for state in ["normal", "hover", "pressed", "disabled"]:
+			var box := StyleBoxFlat.new()
+			box.bg_color = color.darkened(0.6) if state == "disabled" else (color.lightened(0.15) if state == "hover" else color)
+			box.set_corner_radius_all(8)
+			box.set_border_width_all(3 if i == current else 1)
+			box.border_color = GOLD if i == current else Color(0.25, 0.18, 0.12)
+			btn.add_theme_stylebox_override(state, box)
+		btn.add_theme_color_override("font_color", Color(0.12, 0.09, 0.06))
+		btn.add_theme_color_override("font_disabled_color", Color(0.8, 0.75, 0.65))
+		btn.pressed.connect(func() -> void: skin_chosen.emit(i))
+		_skins.add_child(btn)
 
 
 ## Tooltip of a level button: its title, then one line per star with its target (on the main map).
