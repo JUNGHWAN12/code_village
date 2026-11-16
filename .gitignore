@@ -16,3 +16,6 @@
 export_presets.cfg
 /build/
 /export/
+
+# Python bytecode (tools/)
+__pycache__/
