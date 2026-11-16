@@ -119,12 +119,37 @@ func _run_all() -> void:
 			_expect(text.count("M") == plates.size(), "%s map %d has a name plate per house" % [level["title"], i])
 		if not out["parsed"]["ok"]:
 			continue
+		# The reference solution earns all three stars on every map (also with a level's own "star_steps").
+		for i in maps.size():
+			var ref := WorldHost.reference_steps(level, i)
+			var goals := Levels.star_goals(level, i, ref)
+			_expect(ref >= 0 or not Levels.scores_steps(level), "%s map %d has a commands target" % [level["title"], i])
+			_expect(goals.size() == 3 and Levels.star_mask(goals, lines, ref) == 7,
+					"%s map %d: the solution earns 3 stars %s" % [level["title"], i, goals])
 		var program: Array = out["parsed"]["program"]
 		for check in WorldHost.checks(level):
 			var run: Dictionary = await WorldHost.run_on_map(level, check["map"], program, check["seed"])
 			var vw: GridWorld = run["world"]
 			_expect(run["result"]["ok"] and vw.is_solved(), "%s solves map %d seed %d %s" % [
 				level["title"], check["map"], check["seed"], run["result"].get("message", "")])
+
+	print("== Stars ==")
+	var plain := {"par": 5}
+	var g := Levels.star_goals(plain, 0, 8)
+	_expect(g[1] == {"kind": "lines", "max": 5} and g[2] == {"kind": "steps", "max": 8}, "stars: clear, lines, steps %s" % [g])
+	_expect(Levels.star_mask(g, 5, 8) == 7, "stars: all three")
+	_expect(Levels.star_mask(g, 6, 8) == 5, "stars: too many lines keeps the commands star")
+	_expect(Levels.star_mask(g, 5, 9) == 3, "stars: too many commands keeps the lines star")
+	_expect(Levels.star_mask(g, 9, 9) == 1, "stars: a clear is always one star")
+	_expect(Levels.star_mask(Levels.star_goals(plain), 5, 0) == 3, "stars: unknown commands target is not earned")
+	_expect(Levels.star_goals({"par": 5, "star_steps": 12}, 1, 8)[2]["max"] == 12, "stars: star_steps overrides the solution")
+	_expect(Levels.star_goals({"par": 5, "star_steps": [12, 20]}, 1, 8)[2]["max"] == 20, "stars: star_steps per map")
+	var dice := Levels.star_goals({"par": 5, "seeds": [2]})
+	_expect(dice[1] == {"kind": "lines", "max": 8} and dice[2] == {"kind": "lines", "max": 5}, "stars: seeded level has two line stars %s" % [dice])
+	_expect(Levels.star_mask(dice, 7, 99) == 3 and Levels.star_mask(dice, 9, 0) == 1, "stars: seeded level ignores commands")
+	_expect(Levels.star_goals({"par": 5, "seeds": [2], "star_steps": 9})[2] == {"kind": "steps", "max": 9}, "stars: seeded level with star_steps")
+	_expect(Levels.star_marks(5) == "★☆★" and Levels.star_count(5) == 2, "stars: marks and count")
+	_expect(Levels.star_text(g[1]) == "코드 5줄 이하" and Levels.star_text(g[2]) == "명령 8번 이하", "stars: goal text")
 
 	print("== Parser errors ==")
 	var lvl: Dictionary = Levels.ALL[0]

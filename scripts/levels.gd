@@ -7,7 +7,9 @@ extends RefCounted
 ##   R  start of another robot (robots() order is S, then R in reading order)
 ##   A  apple on the path
 ##   G  goal (one per robot; a level is solved when every G has a robot and no apple is left)
-## "par" is the target number of code lines for 3 stars.
+## "par" is the target number of code lines (the code-lines star, see star_goals()).
+## "star_steps" (optional) is the robot-command target of the commands star: one number, or a list with
+## one number per map (main map first). Without it the target is what "solution" needs on that map.
 ## "solution" is used by tests/run_tests.gd and is never shown to the player.
 ## "tools" picks which palette buttons are shown.
 ## "banned" (optional) lists robot functions this level does not allow, so the puzzle
@@ -1100,3 +1102,76 @@ static func maps(level: Dictionary) -> Array:
 	var result: Array = [level["map"]]
 	result.append_array(level.get("variants", []))
 	return result
+
+
+# --- Stars ------------------------------------------------------------------
+
+## Extra lines over "par" that still earn the easier star on levels without a commands star.
+const LOOSE_LINES := 3
+
+
+## Whether the level has a commands star. Levels with "seeds" do not (the count depends on the dice),
+## unless they set "star_steps".
+static func scores_steps(level: Dictionary) -> bool:
+	return level.has("star_steps") or not level.has("seeds")
+
+
+## The three stars of a level on one map, in display order; bit i of a star mask is goal i.
+## Each goal is {"kind", "max"}: "clear" (solved), "lines" (code lines <= max), "steps" (robot commands <= max).
+## `ref_steps` is what the reference solution needs on that map (-1: unknown, the star cannot be earned).
+## Levels without a commands star have two code-lines stars instead: par + LOOSE_LINES, then par.
+static func star_goals(level: Dictionary, map_index: int = 0, ref_steps: int = -1) -> Array[Dictionary]:
+	var par := int(level["par"])
+	var goals: Array[Dictionary] = [{"kind": "clear", "max": 0}]
+	if scores_steps(level):
+		var steps := ref_steps
+		if level.has("star_steps"):
+			var own: Variant = level["star_steps"]
+			steps = int(own[map_index]) if own is Array else int(own)
+		goals.append({"kind": "lines", "max": par})
+		goals.append({"kind": "steps", "max": steps})
+	else:
+		goals.append({"kind": "lines", "max": par + LOOSE_LINES})
+		goals.append({"kind": "lines", "max": par})
+	return goals
+
+
+## Bit mask of the goals a solved run met with `lines` code lines and `steps` robot commands.
+static func star_mask(goals: Array[Dictionary], lines: int, steps: int) -> int:
+	var mask := 0
+	for i in goals.size():
+		var top := int(goals[i]["max"])
+		var met := true
+		match String(goals[i]["kind"]):
+			"lines":
+				met = lines <= top
+			"steps":
+				met = top >= 0 and steps <= top
+		if met:
+			mask |= 1 << i
+	return mask
+
+
+static func star_count(mask: int) -> int:
+	var n := 0
+	for i in 3:
+		n += (mask >> i) & 1
+	return n
+
+
+## "★☆★": one mark per goal, in goal order.
+static func star_marks(mask: int) -> String:
+	var text := ""
+	for i in 3:
+		text += "★" if mask & (1 << i) else "☆"
+	return text
+
+
+## What a goal asks for, e.g. "코드 5줄 이하".
+static func star_text(goal: Dictionary) -> String:
+	match String(goal["kind"]):
+		"lines":
+			return "코드 %d줄 이하" % int(goal["max"])
+		"steps":
+			return "명령 %d번 이하" % int(goal["max"]) if int(goal["max"]) >= 0 else "명령 수 줄이기"
+	return "클리어"

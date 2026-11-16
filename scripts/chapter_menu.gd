@@ -76,13 +76,14 @@ func _ready() -> void:
 	hide()
 
 
-## stars[i]: best stars of level i (0 = not cleared). unlocked: Callable(i) -> bool.
+## stars[i]: star mask of level i (bit per Levels.star_goals entry, 0 = not cleared).
+## unlocked: Callable(i) -> bool.
 func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int) -> void:
 	for child in _grid.get_children():
 		child.queue_free()
 	var total := 0
 	for s in stars:
-		total += int(s)
+		total += Levels.star_count(int(s))
 	_summary.text = "★ %d / %d" % [total, stars.size() * 3]
 	_unlock_box.set_pressed_no_signal(unlock_all)
 	for c in Levels.CHAPTERS.size():
@@ -142,11 +143,16 @@ func _card(c: int, stars: Array, unlocked: Callable, current: int) -> Control:
 		var btn := Button.new()
 		var s := int(stars[i])
 		var is_open: bool = unlocked.call(i)
-		btn.text = "%d\n%s" % [Levels.number(i),("★".repeat(s) + "☆".repeat(3 - s)) if is_open else "🔒"]
+		btn.text = "%d\n%s" % [Levels.number(i), Levels.star_marks(s) if is_open else "🔒"]
 		btn.custom_minimum_size = Vector2(54, 50)
 		btn.add_theme_font_size_override("font_size", 14)
 		btn.disabled = not is_open
 		btn.tooltip_text = Levels.title(i)
+		if is_open:
+			# The commands target needs a run of the solution, so the menu names that star without a number.
+			var goals := Levels.star_goals(Levels.ALL[i])
+			for g in goals.size():
+				btn.tooltip_text += "\n%s %s" % ["★" if s & (1 << g) else "☆", Levels.star_text(goals[g])]
 		if i == current:
 			btn.add_theme_color_override("font_color", GOLD)
 		btn.pressed.connect(func() -> void:
