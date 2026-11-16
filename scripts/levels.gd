@@ -930,6 +930,7 @@ const ALL: Array[Dictionary] = [
 		"facing": "E",
 		"required": ["random", "input"],
 		"seeds": [2, 3],
+		"star_steps": [14, 17, 12],  # the walk plus one deliver() per chosen house: the same with any dice
 		"par": 7,
 		"tools": ["move", "while", "if", "cond", "not", "input", "int_input", "mailboxes", "random", "random_more", "house", "print"],
 		"starter": "import random\nprint(mailboxes())\n",
