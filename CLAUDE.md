@@ -58,8 +58,11 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
 - `scripts/dialogue.gd`: `CAST` (name, speech style, outfit) and `LEVELS[i]` (intro, hints, success) for `Levels.ALL[i]`;
   failure lines come from the speaker's style in `FAIL`, lines about a missed star from `STAR` (`Dialogue.star_hint`;
   a level can set its own in `star_hints`). They show on the result card and the villager says them after "다시 하기". Tests check one entry per level and that outfit parts exist.
-- `scripts/villager.gd`: the villager FBX has a skeleton but no animations; pose is set from code (arms down from
-  the T-pose, idle sway, talk/happy/sad). Bone axes are measured at setup; bone positions are computed from local
+- `scripts/villager.gd`: the villager FBX has a skeleton but no animations. The idle pose is a clip from
+  `asset/characters/anims/*.json` (`Villager.IDLE_CLIPS`, picked per villager from its outfit; a `CAST` look can name
+  one with `"clip"`), sampled by hand each frame (`_play_clip`, no AnimationPlayer); talk/happy/sad are added from
+  code on top. Without the clip files the whole pose comes from code (arms down from the T-pose, idle sway).
+  The clips' hips position is ignored (some were made around another root height). Bone axes are measured at setup; bone positions are computed from local
   poses because `Skeleton3D.get_bone_global_pose` is stale before the first frame. The FBX skeleton is z-up.
 - `scripts/speech_bubble.gd`: 2D bubble over the view, tail on the villager's head (`main._process`). `[code]` in
   dialogue text is colored by `SpeechBubble.format()`. The hint button walks the villager's hints, then the level's `hint`.
@@ -98,7 +101,12 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
 - `asset/props/`: horse and road-sign FBX from the PRO package (3 LODs, no texture; `Board._fix_fbx_prop` keeps LOD0
   and applies the glb palette). Pass a full `res://` path to `Board._spawn` for these.
 - `asset/characters/`: villager FBX (male, female) and palettes, extracted from the PRO Unity package. Outfits are
-  mesh names toggled on/off (from the Unity prefabs). The 25 Unity `.anim` clips are not converted yet.
+  mesh names toggled on/off (from the Unity prefabs). `asset/characters/anims/` holds the pack's 24 animation
+  clips as JSON (walk, sit, hammer, drink, rake, ...; only the three male idles are used so far). Make them with
+  `python tools/convert_unity_anims.py asset/<PRO pack>.unitypackage` after copying `asset/` in. The clips are per-bone
+  Euler curves; Unity mirrors X on FBX import, so a rotation (x, y, z, w) becomes (x, -y, -z, w) and a position
+  (-x, y, z). Both rigs share bone names and rest pose, so male clips fit the female model.
+  An exported build needs `*.json` in the export filter, or the villagers fall back to the code pose.
 - Otherwise only `asset/glb/glb` is used. `asset/FBX`, `asset/Texture`, the `.blend` pack and `SlavicWorldFree_Godot_*` have `.gdignore`
   (Unity duplicates, Blender files, and Slavic prefabs that expect `res://` at the pack root).
 - The pack colors everything from one 32x32 palette texture. Always run new glb instances through

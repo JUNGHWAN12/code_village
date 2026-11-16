@@ -201,6 +201,38 @@ func _run_all() -> void:
 	DirAccess.remove_absolute(ex_path)
 	_expect(ProgressExport.save("Z:/no/such/folder/x.csv", ex_masks, ex_codes).contains("쓸 수 없어요"), "export: reports a path it cannot write")
 
+	print("== Villager clips ==")
+	_expect(Villager.load_clip("no_such_clip").is_empty(), "clips: a missing clip is empty (pose from code)")
+	for clip_name in Villager.IDLE_CLIPS:
+		var clip := Villager.load_clip(clip_name)
+		if clip.is_empty():
+			print("  skip ", clip_name, " (not converted: run tools/convert_unity_anims.py)")
+			continue
+		var frames: int = clip["frames"]
+		var sized := true
+		for bone in clip["rot"]:
+			sized = sized and (clip["rot"][bone] as PackedFloat32Array).size() == frames * 4
+		for bone in clip["pos"]:
+			sized = sized and (clip["pos"][bone] as PackedFloat32Array).size() == frames * 3
+		_expect(frames >= 2 and float(clip["length"]) > 0.0 and sized, "clips: %s has a value per frame for every bone" % clip_name)
+		for kind in Villager.MODELS:
+			var rig: Node3D = (load(Villager.MODELS[kind]) as PackedScene).instantiate()
+			var rig_skel: Skeleton3D = rig.find_children("*", "Skeleton3D", true, false)[0]
+			var unknown: Array = []
+			var far := 0.0
+			for bone in clip["rot"]:
+				var at := rig_skel.find_bone(Villager.B + bone)
+				if at < 0:
+					unknown.append(bone)
+			# The mirrored axes are right when the legs stay near the rest pose in an idle clip.
+			for bone in ["thigh.L", "thigh.R"]:
+				var at := rig_skel.find_bone(Villager.B + bone)
+				if at >= 0 and clip["rot"].has(bone):
+					var d: PackedFloat32Array = clip["rot"][bone]
+					far = maxf(far, Quaternion(d[0], d[1], d[2], d[3]).normalized().angle_to(rig_skel.get_bone_rest(at).basis.get_rotation_quaternion()))
+			_expect(unknown.is_empty() and far < 0.6, "clips: %s fits the %s rig (unknown bones %s, legs %.2f rad from rest)" % [clip_name, kind, unknown, far])
+			rig.free()
+
 	print("== Parser errors ==")
 	var lvl: Dictionary = Levels.ALL[0]
 	var cases := {

@@ -1,8 +1,11 @@
 class_name Villager
 extends Node3D
 ## A village NPC built from the Slavic villager FBX (res://asset/characters).
-## The FBX has a skeleton but no animations, so the pose is set from code: arms lowered from the
-## bind pose, a gentle idle sway, a nod while talking, a hop when happy and a head shake when sad.
+## The FBX has a skeleton but no animations. The idle pose comes from a clip converted from the
+## pack's Unity animations (tools/convert_unity_anims.py -> asset/characters/anims/*.json); the
+## reactions are added from code: a nod while talking, a hop when happy, a head shake when sad.
+## Without the clip files (asset/ is not in git) the whole pose is set from code: arms lowered
+## from the bind pose and a gentle sway.
 ## Bone rotation axes are found at setup by measuring where the bones move, so the code does not
 ## depend on how the rig's local axes happen to be oriented.
 
@@ -18,6 +21,12 @@ const PALETTES: Dictionary = {
 const ALWAYS: PackedStringArray = ["head", "eyes", "teeth", "corpse"]
 const HEIGHT: float = 1.75
 const B: String = "Humanoid|"
+const CLIP_DIR: String = "res://asset/characters/anims/"
+## Idle clips; a look picks one with "clip", otherwise its parts decide (the same villager always
+## gets the same one). Both rigs share bone names and rest pose, so the male clips fit the female.
+const IDLE_CLIPS: PackedStringArray = ["villager_male_idle1", "villager_male_idle2", "villager_male_idle3"]
+## Radians the arms swing down from the bind T-pose when no clip poses them.
+const ARM_DROP: float = 1.25
 
 enum Mood { IDLE, TALK, HAPPY, SAD }
 
@@ -31,6 +40,10 @@ var _mood_time: float = 0.0
 var _time: float = 0.0
 var _base_y: float = 0.0
 var _materials: Dictionary = {}
+var _clip: Dictionary = {}  # the idle clip being played, see load_clip(); {} = pose from code only
+var _pose: Dictionary = {}  # bone index -> Quaternion the clip gave this frame
+
+static var _clips: Dictionary = {}  # clip name -> loaded clip ({} when the file is missing)
 
 
 ## look = {"model": "male"|"female", "parts": ["Hair_01a", "Vest_01a", ...], "item": "I_Villager_Hammer_01a"}
@@ -56,6 +69,8 @@ func setup(look: Dictionary) -> void:
 	_find_bones()
 	_learn_axes()
 	_fit_to_height()
+	var parts: Array = look.get("parts", [])
+	_clip = load_clip(look.get("clip", IDLE_CLIPS[hash(str(parts)) % IDLE_CLIPS.size()]))
 	_apply_pose(0.0)
 
 
@@ -93,21 +108,75 @@ func _process(delta: float) -> void:
 
 # --- Pose -------------------------------------------------------------------
 
+## A converted clip by name: {"length", "frames", "rot": {bone: PackedFloat32Array of x, y, z, w per
+## frame}, "pos": {bone: PackedFloat32Array of x, y, z per frame}}, or {} when the file is missing.
+static func load_clip(clip_name: String) -> Dictionary:
+	if _clips.has(clip_name):
+		return _clips[clip_name]
+	var clip := {}
+	var path := CLIP_DIR + clip_name + ".json"
+	if FileAccess.file_exists(path):
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if data is Dictionary and int(data.get("frames", 0)) >= 2:
+			clip = {"length": float(data["length"]), "frames": int(data["frames"]), "rot": {}, "pos": {}}
+			for track in ["rot", "pos"]:
+				for bone in data.get(track, {}):
+					clip[track][bone] = PackedFloat32Array(data[track][bone])
+	_clips[clip_name] = clip
+	return clip
+
+
+## Poses the bones from the clip at time t (looping), blending between its two nearest frames.
+func _play_clip(t: float) -> void:
+	_pose.clear()
+	var frames: int = _clip["frames"]
+	var at := fposmod(t, _clip["length"]) / float(_clip["length"]) * (frames - 1)
+	var a := mini(int(at), frames - 2)
+	var w := at - a
+	var rot: Dictionary = _clip["rot"]
+	for bone in rot:
+		if not _bones.has(bone):
+			continue
+		var d: PackedFloat32Array = rot[bone]
+		var q0 := Quaternion(d[a * 4], d[a * 4 + 1], d[a * 4 + 2], d[a * 4 + 3])
+		var q1 := Quaternion(d[a * 4 + 4], d[a * 4 + 5], d[a * 4 + 6], d[a * 4 + 7])
+		var q := q0.normalized().slerp(q1.normalized(), w)
+		_pose[_bones[bone]] = q
+		_skel.set_bone_pose_rotation(_bones[bone], q)
+	var pos: Dictionary = _clip["pos"]
+	for bone in pos:
+		# The hips stay where the rig put them: some clips were made around another root height
+		# (idle2 has the hips 0.8 m lower), and a villager stands on its own spot anyway.
+		if bone == "hips" or not _bones.has(bone):
+			continue
+		var p: PackedFloat32Array = pos[bone]
+		var p0 := Vector3(p[a * 3], p[a * 3 + 1], p[a * 3 + 2])
+		var p1 := Vector3(p[a * 3 + 3], p[a * 3 + 4], p[a * 3 + 5])
+		_skel.set_bone_pose_position(_bones[bone], p0.lerp(p1, w))
+
+
 func _apply_pose(_delta: float) -> void:
 	var t := _time
+	var clip := not _clip.is_empty()
+	if clip:
+		_play_clip(t)
 	var nod := 0.0
 	var shake := 0.0
-	var lean := sin(t * 1.3) * 0.03
-	var drop_l := 1.25  # radians the arms swing down from the bind T-pose
-	var drop_r := 1.25
+	var lean := 0.0 if clip else sin(t * 1.3) * 0.03
+	# With a clip the arms are already down: the angles below are then added to its pose.
+	var down := 0.0 if clip else ARM_DROP
+	var drop_l := down
+	var drop_r := down
+	var arms_up := false
 	var hop := 0.0
 	match _mood:
 		Mood.TALK:
 			nod = sin(t * 7.0) * 0.12
-			drop_r = 1.0 + sin(t * 3.5) * 0.12  # small hand gesture
+			drop_r = down - 0.25 + sin(t * 3.5) * 0.12  # small hand gesture
 		Mood.HAPPY:
 			hop = absf(sin(t * 8.0)) * 0.18
-			drop_l = -0.9 + sin(t * 10.0) * 0.25  # both arms up, waving
+			arms_up = true
+			drop_l = -0.9 + sin(t * 10.0) * 0.25  # both arms up, waving: measured from the T-pose
 			drop_r = -0.9 - sin(t * 10.0) * 0.25
 			nod = -0.15
 		Mood.SAD:
@@ -115,16 +184,24 @@ func _apply_pose(_delta: float) -> void:
 			nod = 0.25
 	_rot("head", "nod", nod, "shake", shake)
 	_rot("spine", "lean", lean)
-	_rot("upper_arm.L", "arm_l", drop_l)
-	_rot("upper_arm.R", "arm_r", drop_r)
+	_rot("upper_arm.L", "arm_l", drop_l, "", 0.0, arms_up)
+	_rot("upper_arm.R", "arm_r", drop_r, "", 0.0, arms_up)
+	if arms_up and clip:
+		# The clip bends the elbows for arms that hang down; straighten them for the wave.
+		for bone in ["forearm.L", "forearm.R"]:
+			if _bones.has(bone):
+				_skel.set_bone_pose_rotation(_bones[bone], _rest[_bones[bone]])
 	_model.position.y = _base_y + hop
 
 
-func _rot(bone: String, axis_a: String, angle_a: float, axis_b: String = "", angle_b: float = 0.0) -> void:
+## Turns a bone by angle_a about a learned axis (and angle_b about a second one), starting from
+## the clip's pose for that bone, or from its rest pose when there is none or `from_rest` is set.
+func _rot(bone: String, axis_a: String, angle_a: float, axis_b: String = "", angle_b: float = 0.0, from_rest: bool = false) -> void:
 	if not _bones.has(bone) or not _axes.has(axis_a):
 		return
 	var i: int = _bones[bone]
-	var q: Quaternion = _rest[i] * Quaternion(_axes[axis_a], angle_a)
+	var start: Quaternion = _rest[i] if from_rest else _pose.get(i, _rest[i])
+	var q: Quaternion = start * Quaternion(_axes[axis_a], angle_a)
 	if axis_b != "" and _axes.has(axis_b):
 		q = q * Quaternion(_axes[axis_b], angle_b)
 	_skel.set_bone_pose_rotation(i, q)
