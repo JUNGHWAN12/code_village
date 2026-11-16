@@ -7,11 +7,13 @@ signal level_chosen(index: int)
 signal unlock_all_toggled(on: bool)
 signal skin_chosen(index: int)
 signal export_requested
+signal student_changed(text: String)
 signal closed
 
 const CARD_BG := Color(0.2, 0.15, 0.11, 0.97)
 const CARD_LOCKED := Color(0.15, 0.13, 0.12, 0.92)
 const GOLD := Color(1.0, 0.83, 0.42)
+const STUDENT_MAX: int = 20  # longest student name
 
 var _grid: GridContainer
 var _summary: Label
@@ -19,6 +21,7 @@ var _unlock_box: CheckBox
 var _close_btn: Button
 var _skins: HBoxContainer
 var _note: Label
+var _student: LineEdit
 
 
 func _ready() -> void:
@@ -46,6 +49,24 @@ func _ready() -> void:
 	title.add_theme_color_override("font_color", GOLD)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
+	var who := Label.new()
+	who.text = "이름"
+	who.add_theme_font_size_override("font_size", 15)
+	who.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(who)
+	_student = LineEdit.new()
+	_student.placeholder_text = "내 이름"
+	_student.tooltip_text = "진행 내보내기 파일에 적히는 이름이에요."
+	_student.max_length = STUDENT_MAX
+	_student.custom_minimum_size = Vector2(170, 36)
+	_student.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_student.add_theme_font_size_override("font_size", 15)
+	_student.text_changed.connect(func(text: String) -> void: student_changed.emit(text))
+	_student.text_submitted.connect(func(_text: String) -> void: _student.release_focus())
+	head.add_child(_student)
+	var head_gap := Control.new()
+	head_gap.custom_minimum_size = Vector2(28, 0)
+	head.add_child(head_gap)
 	_summary = Label.new()
 	_summary.add_theme_font_size_override("font_size", 18)
 	_summary.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -185,6 +206,12 @@ func _card(c: int, stars: Array, unlocked: Callable, current: int, ref_steps: Ca
 			level_chosen.emit(i))
 		row.add_child(btn)
 	return panel
+
+
+## Shows the saved student name in the name box (unless the player is typing in it).
+func set_student(text: String) -> void:
+	if not _student.has_focus():
+		_student.text = text
 
 
 ## A short message next to the export button (the full text is its tooltip).

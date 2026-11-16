@@ -83,9 +83,10 @@ Players write a subset of Python (plus `repeat N:`) to move a robot through a 3D
   star is which (`Levels.star_marks`, `star_text`). Tests check that every solution earns all three on every map.
 - Robot colors (`Levels.SKINS`) open with total stars and are picked at the foot of the chapter screen (`meta/robot_skin`
   in the save). Only a lone robot wears the skin: with several robots the colors are their names (`ROBOT_NAMES`).
-- "진행 내보내기" on the chapter screen writes `code_village_<date>_<time>.csv` to the Documents folder
+- "진행 내보내기" on the chapter screen writes `code_village_<name>_<date>_<time>.csv` to the Documents folder
   (`scripts/progress_export.gd`: a row per level with stars, star targets and the saved code; UTF-8 with BOM for Excel).
-  One save is one player: the file has no student name, so name the file or the PC when collecting them.
+  The name typed in the chapter screen's "이름" box (`meta/student` in the save) goes into the file name and the
+  first column of every row, so the files of a class can be pasted into one sheet. One save is one player.
 - Code completion (`_on_completion_requested`), villager click = next hint, failed hidden check re-runs itself.
 - Sounds: `scripts/sfx.gd` plays `audio/sfx/*.wav`, synthesized for this project (no third-party audio).
 - Sky: `shaders/sky_slavica.tres` (EmacEArt sky shader); grass tufts use `shaders/EA_GrassWind.gdshader`
