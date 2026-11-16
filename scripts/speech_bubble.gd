@@ -10,6 +10,8 @@ signal closed
 const WIDTH: float = 330.0
 const CHARS_PER_SECOND: float = 45.0
 const TAIL: float = 16.0
+const SLACK: float = 14.0  # the speaker may move this far (px) before the bubble follows
+const SIDE_KEEP: float = 40.0  # extra room (px) needed above before a side bubble goes back on top
 const BG := Color(1.0, 0.97, 0.88)
 const BORDER := Color(0.36, 0.25, 0.15)
 
@@ -25,6 +27,8 @@ var _view: Rect2 = Rect2()
 var _auto: float = 0.0  # > 0: each line moves on by itself this many seconds after it is typed
 var _auto_left: float = 0.0
 var _side: int = 0  # 0: bubble above the target; -1 / 1: bubble left / right of it (no room above)
+var _anchor: Vector2 = Vector2.ZERO  # where the bubble is laid out from: follows _target with SLACK
+var _placed: bool = false  # false until the first point_at() after say(): that one snaps
 
 
 func _ready() -> void:
@@ -75,6 +79,7 @@ func say(speaker: String, lines: Array, hold: float = 0.0, auto: float = 0.0) ->
 	_index = 0
 	_hold = hold
 	_auto = auto
+	_placed = false
 	show()
 	_show_line()
 
@@ -89,15 +94,28 @@ func dismiss() -> void:
 
 ## Keeps the tail on `target` (screen position) and the bubble inside `view`. The bubble sits
 ## above the target; when there is no room above, it moves beside it so it never covers the speaker.
+## Only the tail tracks the target exactly: the bubble itself ignores small movements (a swaying
+## head, a hopping robot) and does not flip between "above" and "beside" at the edge of the room.
 func point_at(target: Vector2, view: Rect2) -> void:
 	_target = target
 	_view = view
-	var pos := target - Vector2(size.x * 0.5, size.y + TAIL)
-	_side = 0
-	if pos.y < view.position.y + 8.0:
-		_side = 1 if target.x < view.get_center().x else -1
-		pos.x = target.x + TAIL + 10.0 if _side == 1 else target.x - size.x - TAIL - 10.0
-		pos.y = target.y - size.y * 0.35
+	if not _placed:
+		_placed = true
+		_anchor = target
+		_side = 0
+	elif _anchor.distance_to(target) > SLACK:
+		_anchor = target + (_anchor - target).normalized() * SLACK
+	var pos := _anchor - Vector2(size.x * 0.5, size.y + TAIL)
+	var top := view.position.y + 8.0
+	if pos.y < top + (SIDE_KEEP if _side != 0 else 0.0):
+		# Pick the roomier side; change it only once the speaker is well past the middle.
+		var off := _anchor.x - view.get_center().x
+		if _side == 0 or absf(off) > SIDE_KEEP:
+			_side = 1 if off < 0.0 else -1
+		pos.x = _anchor.x + TAIL + 10.0 if _side == 1 else _anchor.x - size.x - TAIL - 10.0
+		pos.y = _anchor.y - size.y * 0.35
+	else:
+		_side = 0
 	pos.x = clampf(pos.x, view.position.x + 8.0, view.end.x - size.x - 8.0)
 	pos.y = clampf(pos.y, view.position.y + 8.0, view.end.y - size.y - 8.0)
 	position = pos
