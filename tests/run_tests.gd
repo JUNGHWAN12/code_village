@@ -177,6 +177,30 @@ func _run_all() -> void:
 	_expect(Levels.skin_stars(Levels.SKINS.size() - 1) == Levels.ALL.size() * 3, "skins: the last color needs every star")
 	_expect(not Levels.skin_unlocked(99, 999) and not Levels.skin_unlocked(-1, 999), "skins: unknown index is locked")
 
+	print("== Progress export ==")
+	var ex_masks: Array = []
+	var ex_codes: Array = []
+	for i in Levels.ALL.size():
+		ex_masks.append(0)
+		ex_codes.append("")
+	ex_masks[0] = 5
+	ex_codes[0] = "move()\nprint(\"a, b\")\n"
+	ex_masks[1] = 7
+	var table := ProgressExport.csv(ex_masks, ex_codes)
+	var ex_rows := table.trim_prefix(ProgressExport.BOM).split("\r\n")
+	_expect(table.begins_with(ProgressExport.BOM), "export: starts with a BOM so Excel reads Korean")
+	_expect(ex_rows[0] == "\"" + "\",\"".join(ProgressExport.HEADER) + "\"", "export: header row -> %s" % ex_rows[0])
+	_expect(ex_rows[1] == "\"1\",\"첫 걸음\",\"첫 걸음\",\"2\",\"O\",\"코드 4줄 이하\",\"\",\"명령 4번 이하\",\"O\",\"2\",\"4\",\"move()\nprint(\"\"a, b\"\")\n\"",
+			"export: a level row keeps stars, targets and quoted code -> %s" % ex_rows[1])
+	_expect(table.count("\r\n") == Levels.ALL.size() + 2, "export: a row per level, a header and a total (%d)" % table.count("\r\n"))
+	_expect(table.ends_with("\"\",\"\",\"합계\",\"5 / %d\"\r\n" % (Levels.ALL.size() * 3)), "export: total row")
+	_expect(ProgressExport._row(["=1+1", "-x", "a\"b"]) == "\"'=1+1\",\"'-x\",\"a\"\"b\"", "export: formulas are shown, not run; quotes doubled")
+	var ex_path := OS.get_user_data_dir().path_join("export_test.csv")
+	_expect(ProgressExport.save(ex_path, ex_masks, ex_codes) == "" and FileAccess.get_file_as_bytes(ex_path) == table.to_utf8_buffer(), "export: writes the file")
+	_expect(FileAccess.get_file_as_bytes(ex_path).slice(0, 3) == PackedByteArray([0xEF, 0xBB, 0xBF]), "export: the file starts with the UTF-8 BOM bytes")
+	DirAccess.remove_absolute(ex_path)
+	_expect(ProgressExport.save("Z:/no/such/folder/x.csv", ex_masks, ex_codes).contains("쓸 수 없어요"), "export: reports a path it cannot write")
+
 	print("== Parser errors ==")
 	var lvl: Dictionary = Levels.ALL[0]
 	var cases := {

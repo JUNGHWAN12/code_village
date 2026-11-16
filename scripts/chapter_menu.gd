@@ -6,6 +6,7 @@ extends Control
 signal level_chosen(index: int)
 signal unlock_all_toggled(on: bool)
 signal skin_chosen(index: int)
+signal export_requested
 signal closed
 
 const CARD_BG := Color(0.2, 0.15, 0.11, 0.97)
@@ -17,6 +18,7 @@ var _summary: Label
 var _unlock_box: CheckBox
 var _close_btn: Button
 var _skins: HBoxContainer
+var _note: Label
 
 
 func _ready() -> void:
@@ -67,9 +69,19 @@ func _ready() -> void:
 	_unlock_box.add_theme_font_size_override("font_size", 14)
 	_unlock_box.toggled.connect(func(on: bool) -> void: unlock_all_toggled.emit(on))
 	foot.add_child(_unlock_box)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(spacer)
+	var export_btn := Button.new()
+	export_btn.text = "진행 내보내기"
+	export_btn.tooltip_text = "레벨마다 받은 별과 작성한 코드를 표(CSV) 파일로 저장해요."
+	export_btn.add_theme_font_size_override("font_size", 14)
+	export_btn.pressed.connect(func() -> void: export_requested.emit())
+	foot.add_child(export_btn)
+	_note = Label.new()
+	_note.add_theme_font_size_override("font_size", 13)
+	_note.add_theme_color_override("font_color", Color(0.75, 0.9, 0.7))
+	_note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_note.mouse_filter = Control.MOUSE_FILTER_PASS
+	foot.add_child(_note)
 	_skins = HBoxContainer.new()
 	_skins.add_theme_constant_override("separation", 6)
 	foot.add_child(_skins)
@@ -96,6 +108,7 @@ func open(stars: Array, unlocked: Callable, unlock_all: bool, current: int, ref_
 		total += Levels.star_count(int(s))
 	_summary.text = "★ %d / %d" % [total, stars.size() * 3]
 	_unlock_box.set_pressed_no_signal(unlock_all)
+	_note.text = ""
 	_fill_skins(total, skin)
 	for c in Levels.CHAPTERS.size():
 		_grid.add_child(_card(c, stars, unlocked, current, ref_steps))
@@ -172,6 +185,13 @@ func _card(c: int, stars: Array, unlocked: Callable, current: int, ref_steps: Ca
 			level_chosen.emit(i))
 		row.add_child(btn)
 	return panel
+
+
+## A short message next to the export button (the full text is its tooltip).
+func show_note(text: String, ok: bool = true) -> void:
+	_note.text = text
+	_note.tooltip_text = text
+	_note.add_theme_color_override("font_color", Color(0.75, 0.9, 0.7) if ok else Color(1.0, 0.7, 0.36))
 
 
 ## The robot colors: a swatch per skin, locked ones showing the stars they need.

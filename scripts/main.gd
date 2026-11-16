@@ -352,6 +352,7 @@ func _ready() -> void:
 	_menu.level_chosen.connect(_change_level)
 	_menu.unlock_all_toggled.connect(_on_unlock_all_toggled)
 	_menu.skin_chosen.connect(_on_skin_chosen)
+	_menu.export_requested.connect(_on_export_requested)
 	_refresh_level_select()
 	var start_level := clampi(int(_progress.get_value("meta", "last_level", 0)), 0, Levels.ALL.size() - 1)
 	while Levels.prev_of(start_level) >= 0 and not _unlocked(start_level):
@@ -489,6 +490,25 @@ func _on_skin_chosen(index: int) -> void:
 	if _robots.size() == 1:
 		_robot.set_body_color(Levels.SKINS[index]["color"])
 	_open_menu()
+
+
+## Saves the stars and code of every level as a CSV file in the Documents folder (the teacher's
+## "진행 내보내기" button on the chapter screen).
+func _on_export_requested() -> void:
+	_save_code()
+	var masks: Array = []
+	var codes: Array = []
+	for i in Levels.ALL.size():
+		masks.append(_star_mask(i))
+		codes.append(String(_codes.get(i, _progress.get_value("code", str(i), ""))))
+	var folder := OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+	if folder == "":
+		folder = OS.get_user_data_dir()
+	var stamp := Time.get_datetime_string_from_system().replace("T", "_").replace(":", "")
+	var path := folder.path_join("code_village_%s.csv" % stamp)
+	var problem := ProgressExport.save(path, masks, codes)
+	_menu.show_note("저장했어요: %s" % path if problem == "" else problem, problem == "")
+	_log("진행 내보내기: %s" % (path if problem == "" else problem), "#9fd4ff" if problem == "" else "#ffb35c")
 
 
 func _unlock_all() -> bool:
