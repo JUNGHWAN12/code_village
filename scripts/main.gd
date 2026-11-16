@@ -493,7 +493,7 @@ func _open_menu() -> void:
 	var masks: Array = []
 	for i in Levels.ALL.size():
 		masks.append(_star_mask(i))
-	_menu.open(masks, _unlocked, _unlock_all(), _level_index)
+	_menu.open(masks, _unlocked, _unlock_all(), _level_index, _reference_steps)
 
 
 ## Test commands: type one alone in the code editor and press ▶ 실행. "#unlock" opens every level,

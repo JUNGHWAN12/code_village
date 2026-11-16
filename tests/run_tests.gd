@@ -165,6 +165,10 @@ func _run_all() -> void:
 	_expect(Levels.star_marks(5) == "★☆★" and Levels.star_count(5) == 2, "stars: marks and count")
 	_expect(Levels.star_text(g[1]) == "코드 5줄 이하" and Levels.star_text(g[2]) == "명령 8번 이하", "stars: goal text")
 
+	var tip := ChapterMenu.star_tip(0, 5, WorldHost.reference_steps(Levels.ALL[0], 0))
+	_expect(tip == "%s\n★ 클리어\n☆ 코드 4줄 이하\n★ 명령 4번 이하" % Levels.title(0), "stars: chapter menu tooltip -> %s" % tip)
+	_expect(ChapterMenu.star_tip(0, 1).ends_with("☆ 명령 수 줄이기"), "stars: tooltip before the target is known")
+
 	print("== Parser errors ==")
 	var lvl: Dictionary = Levels.ALL[0]
 	var cases := {
